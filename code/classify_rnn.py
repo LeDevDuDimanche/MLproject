@@ -45,7 +45,11 @@ def create_model_single(MAX_SEQ_LEN):
 	return model
 
 
-def get_data_multi(data_folder):
+def get_data_multi(data_folder): 
+	#zips the sent and received data of pcaps structs, outputs a list of this pcaps traces (list) through all the files.
+	# -> aggregates data from different files
+	#saves an array of pcap identifiers in-order with the corresponding pcap list
+	# list of list( (s1 r1 s2 r2 .....) )
 	
 	flist = os.listdir(data_folder)
 	features = []
@@ -57,7 +61,7 @@ def get_data_multi(data_folder):
 			data_dict = json.loads(f.read())
 			for k, v in sorted(data_dict.items()):
 				# TODO(sandra): Offset and normalize times to [0, 1]
-				feature = zip(v['sent'], v['received'])
+				feature = zip(v['sent'], v['received']) #Jules : does this discard the last elements of the longest list ?
 				if len(v['received']) > MAX_SEQ_LEN:
 					MAX_SEQ_LEN = len(v['received'])
 				features.append(list(feature)) #Putting all features
@@ -65,7 +69,8 @@ def get_data_multi(data_folder):
 	features = pad_sequences(features, maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
-def make_single_feature(slist, rlist, olist):
+def make_single_feature(slist, rlist, olist): 
+	#reconstructs the traffic from the received, sent, order lists
 
 	newlist = []
 	for item in olist:
@@ -76,6 +81,7 @@ def make_single_feature(slist, rlist, olist):
 	return newlist
 
 def get_data_single(data_folder):
+	#list of list( (s1 -r1 -r2 s2 -r3 s3 s4 ...) )
 	
 	flist = os.listdir(data_folder)
 	features = []
