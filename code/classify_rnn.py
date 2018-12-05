@@ -6,7 +6,7 @@ from keras.layers import LSTM, Dense, Dropout, Concatenate, Input
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical, np_utils
 from sklearn.preprocessing import LabelEncoder
-from sklearn.cross_validation import train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 BATCH_SIZE = 16
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 	# 		urls.append(line.strip())
 
 	#single_feature()
-	datadir = "/Users/sandra/Documents/GitHub/spring18-SandraDeepthy/experiments/processed_traces/vagrant/"
+	datadir = "../data/"
 	#single_feature(datadir)
 	multi_feature(datadir)
 
