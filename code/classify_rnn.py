@@ -45,13 +45,15 @@ def create_model_single(MAX_SEQ_LEN):
 	return model
 
 
-def get_data_multi(data_folder): 
-	#zips the sent and received data of pcaps structs, outputs a list of this pcaps traces (list) through all the files.
-	# -> aggregates data from different files
-	#saves an array of pcap identifiers in-order with the corresponding pcap list
-	# list of list( (s1 r1 s2 r2 .....) )
+#zips the sent and received data of pcaps structs, outputs a list of this pcaps traces (list) through all the files.
+# -> aggregates data from different files
+#saves an array of pcap identifiers in-order with the corresponding pcap list
+# list of list( (s1 r1 s2 r2 .....) )
+def get_data_multi(data_folder, number_files_taken=None):
 	
 	flist = os.listdir(data_folder)
+	if number_files_taken != None:
+		flist = flist[0 : min(len(flist), number_files_taken)]
 	features = []
 	labels = []
 	MAX_SEQ_LEN = 0
@@ -131,9 +133,31 @@ def convert_labels(Y):
 
 	return new_y
 
-def multi_feature(data_folder):
+#this function takes a matrix
+#of dimension N*D and transforms each column
+# such that only a one is left in each column.
+# the one is left in the column where the maximum value of that column is located.
+# e.g. if input is 
+#     [[.4 .5 .7]
+#      [.2 .9 .3]
+#      [.1 .8 .3]]
+#output would be 
+#     [[1  0  1]
+#      [0  1  0]
+#      [0  0  0]]	
+def one_in_max_of_cols(matrix):
+	row_index_of_maximums = np.argmax(matrix, axis=0)
+	first_column = matrix[:,0]
+	new_columns = []
+	for max_index in row_index_of_maximums: 
+	    zeros = np.zeros_like(first_column)
+	    zeros[max_index] = 1
+	    new_columns.append(zeros)
+	return np.stack(new_columns, axis=1)
 
-	features, labels, max_len = get_data_multi(data_folder)
+def multi_feature(data_folder, number_files_for_training=None):
+
+	features, labels, max_len = get_data_multi(data_folder, number_files_for_training)
 	#To-do
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
@@ -145,7 +169,7 @@ def multi_feature(data_folder):
 	model.fit(X_train, y_train, batch_size=16, epochs=1)
 	score = model.evaluate(X_test, y_test)
 	print(score)
-	y_pred = model.predict(X_test)
+	y_pred = one_in_max_of_cols(model.predict(X_test))
 	print accuracy_score(y_test, y_pred)
 	
 if __name__ == '__main__':
@@ -159,6 +183,5 @@ if __name__ == '__main__':
 
 	#single_feature()
 	datadir = "../data/"
-	#single_feature(datadir)
-	multi_feature(datadir)
+	multi_feature(datadir, number_files_for_training=4)
 
