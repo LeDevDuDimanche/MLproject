@@ -22,7 +22,7 @@ def create_model_multi(MAX_SEQ_LEN):
 	model = Sequential()
 	model.add(LSTM(LSTM_DIM_SIZE, input_shape=(MAX_SEQ_LEN, NUM_FEATURES)))
 	model.add(Dropout(0.2))
-	model.add(Dense(NUM_CLASSES, activation='sigmoid'))
+	model.add(Dense(units=NUM_CLASSES, activation='softmax'))
 
 	model.compile(loss='categorical_crossentropy',
 		optimizer='adam',
@@ -182,6 +182,6 @@ if __name__ == '__main__':
 	# 		urls.append(line.strip())
 
 	#single_feature()
-	datadir = "../data/"
-	multi_feature(datadir, number_files_for_training=4)
+	datadir = "../data_cw100_day0_to_10/"
+	multi_feature(datadir)
 
