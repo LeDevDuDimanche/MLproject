@@ -3,6 +3,7 @@ import collections
 import os
 import json
 import itertools
+from keras.callbacks import EarlyStopping 
 from keras.models import Sequential, Model
 from keras.optimizers import Adam, RMSprop, SGD
 from keras.layers import LSTM, Dense, Dropout, Concatenate, Input
@@ -11,7 +12,6 @@ from keras.utils import to_categorical, np_utils
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
-import pdb
 
 BATCH_SIZE = 16
 EPOCHS = 100
@@ -137,17 +137,38 @@ def get_data_single(data_folder):
 					MAX_SEQ_LEN = len(new_list)
 				features.append(new_list)
 				labels.append(int(k[:-5]))
-	#pdb.set_trace()
 	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
 
 DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
 
-def single_feature(dataInfo, hyperparameter):
+class EarlyStoppingOnBatch(EarlyStopping):
+	def on_epoch_end(self, epoch, logs=None):
+		pass
+	def on_batch_end(self, batch, logs=None):
+		current = self.get_monitor_value(logs)
+		if current is None:
+			return
 
+		if self.monitor_op(current - self.min_delta, self.best):
+			self.best = current
+			self.wait = 0
+			if self.restore_best_weights:
+				self.best_weights = self.model.get_weights()
+		else:
+			self.wait += 1
+			if self.wait >= self.patience:
+				self.batch = batch 
+				self.model.stop_training = True
+			if self.restore_best_weights:
+				if self.verbose > 0:
+					print('Restoring model weights from the end of '
+						'the best batch')
+				self.model.set_weights(self.best_weights)
+
+def single_feature(dataInfo, hyperparameter):
 	features, labels, max_len = dataInfo
-	#pdb.set_trace()
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1])
@@ -155,10 +176,11 @@ def single_feature(dataInfo, hyperparameter):
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
 	print(len(X_train), len(y_train), len(X_test), len(y_test))
 	model = create_model_single(max_len, hyperparameter)
-	model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs)
+	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=10, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping])
 	score = model.evaluate(X_test, y_test)
 	print(score)
-	y_pred = model.predict(X_test)
+	y_pred = one_in_max_of_cols(model.predict(X_test))
 	return accuracy_score(y_test, y_pred)
 
 def convert_labels(Y):
