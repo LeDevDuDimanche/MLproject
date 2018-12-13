@@ -107,13 +107,13 @@ def make_single_feature(slist, rlist, olist):
 	newlist = []
 	def treat_element(x):
 		newlist.append(scale_feature(x))
-	for item in olist:
+	for item in olist[::-1]:
 		if item == 1:
 			treat_element(slist.pop())
 		else:
 			treat_element(rlist.pop() * -1)
 	print("treated data points: ", newlist)
-	return newlist
+	return newlist[::-1]
 
 
 def get_data_single(data_folder):
