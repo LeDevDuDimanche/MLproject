@@ -1,13 +1,17 @@
 import numpy as np
+import collections
 import os
 import json
+import itertools
 from keras.models import Sequential, Model
+from keras.optimizers import Adam, RMSprop, SGD
 from keras.layers import LSTM, Dense, Dropout, Concatenate, Input
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical, np_utils
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+import pdb
 
 BATCH_SIZE = 16
 EPOCHS = 100
@@ -15,6 +19,13 @@ EPOCHS = 100
 LSTM_DIM_SIZE = 32
 NUM_CLASSES = 1500
 NUM_FEATURES = 2
+
+
+MAX_DESCENDING = 703 
+MAX_ASCENDING = 144
+# if you run find_max.py you'll see that the maximum packet size for ascending packets is 144
+# and for descending packets is 703. We're going to use that for doing feature scaling
+
 
 
 def create_model_multi(MAX_SEQ_LEN):
@@ -31,15 +42,31 @@ def create_model_multi(MAX_SEQ_LEN):
 	return model
 
 
-def create_model_single(MAX_SEQ_LEN):
+def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
-	model.add(LSTM(LSTM_DIM_SIZE, input_shape=(MAX_SEQ_LEN, 1)))
-	model.add(Dropout(0.2))
-	model.add(Dense(NUM_CLASSES, activation='sigmoid'))
+	model.add(LSTM(
+		units=LSTM_DIM_SIZE,
+		input_shape=(MAX_SEQ_LEN, 1),
+		activation=hyperparameter.activation_function,
+		dropout=hyperparameter.dropout,
+		return_sequences=True
+
+		
+	))
+
+	for i in range(hyperparameter.nb_layers):
+		model.add(LSTM(
+			units=LSTM_DIM_SIZE,
+			activation=hyperparameter.activation_function,
+			dropout=hyperparameter.dropout,
+			return_sequences=(i != hyperparameter.nb_layers - 1)
+		))
+
+	model.add(Dense(NUM_CLASSES, activation="sigmoid"))
 
 	model.compile(loss='categorical_crossentropy',
-		optimizer='adam',
+		optimizer=hyperparameter.optimizer,
 		metrics=['accuracy'])
 
 	return model
@@ -74,13 +101,20 @@ def get_data_multi(data_folder, number_files_taken=None):
 def make_single_feature(slist, rlist, olist): 
 	#reconstructs the traffic from the received, sent, order lists
 
+	#https://en.wikipedia.org/wiki/Feature_scaling
+	def scale_feature(x):
+		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
 	newlist = []
+	def treat_element(x):
+		newlist.append(scale_feature(x))
 	for item in olist:
 		if item == 1:
-			newlist.append(slist.pop())
+			treat_element(slist.pop())
 		else:
-			newlist.append(rlist.pop() * -1)
+			treat_element(rlist.pop() * -1)
+	print("treated data points: ", newlist)
 	return newlist
+
 
 def get_data_single(data_folder):
 	#list of list( (s1 -r1 -r2 s2 -r3 s3 s4 ...) )
@@ -103,25 +137,29 @@ def get_data_single(data_folder):
 					MAX_SEQ_LEN = len(new_list)
 				features.append(new_list)
 				labels.append(int(k[:-5]))
-	features = pad_sequences(features, maxlen=MAX_SEQ_LEN)
+	pdb.set_trace()
+	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
 
-def single_feature(data_folder):
+DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
 
-	features, labels, max_len = get_data_single(data_folder)
+def single_feature(dataInfo, hyperparameter):
+
+	features, labels, max_len = dataInfo
+	pdb.set_trace()
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1])
 	labels = convert_labels(labels)
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
-	print len(X_train), len(y_train), len(X_test), len(y_test)
-	model = create_model_single(max_len)
-	model.fit(X_train, y_train, batch_size=16, epochs=1)
+	print(len(X_train), len(y_train), len(X_test), len(y_test))
+	model = create_model_single(max_len, hyperparameter)
+	model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs)
 	score = model.evaluate(X_test, y_test)
 	print(score)
 	y_pred = model.predict(X_test)
-	print accuracy_score(y_test, y_pred)
+	return accuracy_score(y_test, y_pred)
 
 def convert_labels(Y):
 	#one-hot
@@ -164,13 +202,52 @@ def multi_feature(data_folder, number_files_for_training=None):
 	features = np.reshape(features, [features.shape[0], max_len, NUM_FEATURES])
 	labels = convert_labels(labels)
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
-	print len(X_train), len(y_train), len(X_test), len(y_test)
+	print(len(X_train), len(y_train), len(X_test), len(y_test))
 	model = create_model_multi(max_len)
 	model.fit(X_train, y_train, batch_size=16, epochs=1)
 	score = model.evaluate(X_test, y_test)
 	print(score)
 	y_pred = one_in_max_of_cols(model.predict(X_test))
-	print accuracy_score(y_test, y_pred)
+	print(accuracy_score(y_test, y_pred))
+
+def create_sequence(min_val, max_val, number_steps):
+	i = 0
+	sequence = []
+	step_size = (max_val - min_val) / number_steps
+	while i < number_steps:
+		sequence.append(min_val + step_size * i)
+		i+=1 
+	return sequence
+
+Hyperparameter = collections.namedtuple("Hyperparameter", "optimizer batch_size epochs nb_layers dropout activation_function")
+
+def create_possible_hyperparameters():
+	number_steps = 10
+
+	optimizer_builders = [SGD, Adam, RMSprop]
+	learning_rates = create_sequence(0.0001, 0.1, number_steps)
+	decays = create_sequence(0, 0.9, number_steps)
+
+	optimizers = []
+	for optimizer_builder in optimizer_builders:
+		for lr in learning_rates:
+			for decay in decays:
+				optimizers.append(optimizer_builder(lr=lr, decay=decay))
+	
+	batch_sizes = create_sequence(32, 256, number_steps)	
+	possible_epochs = create_sequence(1, 100, number_steps)
+	possible_nb_layers = [3,4,5,6]
+	dropouts = create_sequence(0.1, 0.5, number_steps)
+	
+	activation_functions = ["tanh", "sigmoid", "relu"]	
+	
+	cartesian_prod_result = itertools.product(optimizers, batch_sizes, possible_epochs, possible_nb_layers, dropouts, activation_functions)
+	hyperparameters = []
+	for hyperparameter_tuple in cartesian_prod_result:
+		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
+
+	return hyperparameters
+	
 	
 if __name__ == '__main__':
 
@@ -181,7 +258,11 @@ if __name__ == '__main__':
 	# 	for line in lines:
 	# 		urls.append(line.strip())
 
-	#single_feature()
 	datadir = "../data_cw100_day0_to_10/"
-	multi_feature(datadir)
-
+	hyperparameters = create_possible_hyperparameters()
+	hyperparameter_to_score = {}
+	dataInfo = DataInfo(*get_data_single(datadir))
+	for hyperparameter in hyperparameters:
+		print("using this hyperparameter: ", hyperparameter)
+		accuracy_score = single_feature(dataInfo, hyperparameter)
+		hyperparameter_to_score.update({accuracy_score: hyperparameter})

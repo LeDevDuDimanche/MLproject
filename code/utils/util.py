@@ -13,6 +13,17 @@ from joblib import Parallel, delayed
 from functools import partial
 
 
+def foreach_pcap_in_data_folder(data_folder, function_to_apply):
+	flist = os.listdir(data_folder)
+	if data_folder[-1] != "/":
+		data_folder += "/"
+	for fname in flist:
+		print(fname)
+		with open(data_folder + fname) as f:
+			data_dict = json.loads(f.read())
+			for k, v in data_dict.items():
+				function_to_apply(k,v)
+
 # MATH FUNCTIONS:
 def harmonic_mean(x, y, factor=1.0):
     """Returns the weighter harmonic mean of x and y.
@@ -449,17 +460,22 @@ def load_mapping():
     """Return Alexa as a list."""
     ALEXA_LIST = '../collection/short_list_500'
     return [l.strip() for l in open(ALEXA_LIST)]
-ALEXA_MAP = load_mapping()
+
+ALEXA_MAP_CACHED = None
+def ALEXA_MAP():
+	if ALEXA_MAP_CACHED == None:
+		ALEXA_MAP_CACHED = load_mapping()
+	return ALEXA_MAP_CACHED
 
 
 def alexa_rank(url):
     """Return index in Alexa."""
-    return ALEXA_MAP.index(url)
+    return ALEXA_MAP().index(url)
 
 
 def url(index):
     """Return URL for the index in Alexa."""
-    return ALEXA_MAP[index]
+    return ALEXA_MAP()[index]
 
 
 def display(df, urls=False):
