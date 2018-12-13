@@ -168,8 +168,7 @@ class EarlyStoppingOnBatch(EarlyStopping):
 						'the best batch')
 				self.model.set_weights(self.best_weights)
 
-def single_feature(dataInfo, hyperparameter):
-	print("info is", dataInfo)
+def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, labels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
@@ -180,6 +179,8 @@ def single_feature(dataInfo, hyperparameter):
 	model = create_model_single(max_len, hyperparameter)
 	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=10, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping])
+	if fit_return.history['acc'][-1] < baseline_score:
+		return None	
 	score = model.evaluate(X_test, y_test)
 	print(score)
 	y_pred = one_in_max_of_cols(model.predict(X_test))
@@ -288,5 +289,7 @@ if __name__ == '__main__':
 	dataInfo = DataInfo(*get_data_single(datadir))
 	for hyperparameter in hyperparameters:
 		print("using this hyperparameter: ", hyperparameter)
-		accuracy_score = single_feature(dataInfo, hyperparameter)
-		hyperparameter_to_score.update({accuracy_score: hyperparameter})
+		accuracy_score_value = single_feature(dataInfo, hyperparameter, baseline_score=0.2)
+		if accuracy_score_value == None:
+			continue
+		hyperparameter_to_score.update({accuracy_score_value: hyperparameter})
