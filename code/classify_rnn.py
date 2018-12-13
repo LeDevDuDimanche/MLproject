@@ -17,7 +17,7 @@ BATCH_SIZE = 16
 EPOCHS = 100
 
 LSTM_DIM_SIZE = 32
-NUM_CLASSES = 1500
+NUM_CLASSES = 100
 NUM_FEATURES = 2
 
 
@@ -103,7 +103,6 @@ def make_single_feature(slist, rlist, olist):
 
 	#https://en.wikipedia.org/wiki/Feature_scaling
 	def scale_feature(x):
-		print("maxa, maxd", MAX_ASCENDING, MAX_DESCENDING)
 		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
 	newlist = []
 	def treat_element(x):
@@ -170,10 +169,12 @@ class EarlyStoppingOnBatch(EarlyStopping):
 
 def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, labels, max_len = dataInfo
+	print("DATAINFO:",labels)
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1])
 	labels = convert_labels(labels)
+
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
 	print(len(X_train), len(y_train), len(X_test), len(y_test))
 	model = create_model_single(max_len, hyperparameter)
@@ -183,7 +184,9 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 		return None	
 	score = model.evaluate(X_test, y_test)
 	print(score)
+	print(model.predict(X.test))
 	y_pred = one_in_max_of_cols(model.predict(X_test))
+	print("my guess is ", ypred)
 	return accuracy_score(y_test, y_pred)
 
 def convert_labels(Y):
