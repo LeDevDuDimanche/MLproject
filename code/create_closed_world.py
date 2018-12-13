@@ -31,7 +31,7 @@ def create_closed_world(nb_websites=100, max_days_after=10, input_dir="../data/"
 	delta = timedelta(days=max_days_after)	
 	min_plus_delta = min_date + delta 
 	filtered = {f: time  for f, time in file_to_date.items() if time < min_plus_delta}
-	pdb.set_trace()
+	#pdb.set_trace()
 	print("number of websites kept", len(filtered))
 
 	def get_pcap_index(pcap_str):

@@ -137,7 +137,7 @@ def get_data_single(data_folder):
 					MAX_SEQ_LEN = len(new_list)
 				features.append(new_list)
 				labels.append(int(k[:-5]))
-	pdb.set_trace()
+	#pdb.set_trace()
 	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
@@ -147,7 +147,7 @@ DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
 def single_feature(dataInfo, hyperparameter):
 
 	features, labels, max_len = dataInfo
-	pdb.set_trace()
+	#pdb.set_trace()
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1])
