@@ -103,6 +103,7 @@ def make_single_feature(slist, rlist, olist):
 
 	#https://en.wikipedia.org/wiki/Feature_scaling
 	def scale_feature(x):
+		print("maxa, maxd", MAX_ASCENDING, MAX_DESCENDING)
 		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
 	newlist = []
 	def treat_element(x):
@@ -168,6 +169,7 @@ class EarlyStoppingOnBatch(EarlyStopping):
 				self.model.set_weights(self.best_weights)
 
 def single_feature(dataInfo, hyperparameter):
+	print("info is", dataInfo)
 	features, labels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
