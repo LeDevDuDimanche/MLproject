@@ -168,26 +168,28 @@ class EarlyStoppingOnBatch(EarlyStopping):
 				self.model.set_weights(self.best_weights)
 
 def single_feature(dataInfo, hyperparameter, baseline_score):
-	features, labels, max_len = dataInfo
-	print("DATAINFO:",labels)
+	features, olabels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1])
-	labels = convert_labels(labels)
+	labels = convert_labels(olabels)
 
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
 	print(len(X_train), len(y_train), len(X_test), len(y_test))
 	model = create_model_single(max_len, hyperparameter)
 	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=10, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping])
-	if fit_return.history['acc'][-1] < baseline_score:
-		return None	
+	""" if fit_return.history['acc'][-1] < baseline_score:
+		return None	 """
 	score = model.evaluate(X_test, y_test)
-	print(score)
-	print(model.predict(X.test))
-	y_pred = one_in_max_of_cols(model.predict(X_test))
-	print("my guess is ", ypred)
-	return accuracy_score(y_test, y_pred)
+	print("BLABLA",score)
+	print(model.predict(X_test))
+	y_pred = one_in_max_of_cols(model.predict(X_test).T).T
+	ilabels = np.nonzero(y_pred)
+	print("correct labels were", np.nonzero(y_test), "infered labels are", ilabels)
+	res = accuracy_score(y_test, y_pred)
+	print(res)
+	return res
 
 def convert_labels(Y):
 	#one-hot
