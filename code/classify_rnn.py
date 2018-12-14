@@ -177,24 +177,24 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, olabels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
-	features = np.reshape(features, [features.shape[0], max_len, 1])
+	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 	labels = convert_labels(olabels)
+	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
 
-	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
-	print(len(X_train), len(y_train), len(X_test), len(y_test))
+	#y_train and y_test are sparse matrices with exactly one 1 on each row
+
 	model = create_model_single(max_len, hyperparameter)
-	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=10, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=20, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping])
-	""" if fit_return.history['acc'][-1] < baseline_score:
-		return None	 """
+	if fit_return.history['acc'][-1] < baseline_score:
+		return None
 	score = model.evaluate(X_test, y_test)
-	print("BLABLA",score)
-	print(model.predict(X_test))
+	print("Score is", score)
+	print("Predictions :", model.predict(X_test))
 	y_pred = one_in_max_of_cols(model.predict(X_test).T).T
 	ilabels = np.nonzero(y_pred)
 	print("correct labels were", np.nonzero(y_test), "infered labels are", ilabels)
 	res = accuracy_score(y_test, y_pred)
-	print(res)
 	return res
 
 def convert_labels(Y):
@@ -258,7 +258,7 @@ def create_sequence(min_val, max_val, number_steps):
 Hyperparameter = collections.namedtuple("Hyperparameter", "optimizer batch_size epochs nb_layers dropout activation_function")
 
 def create_possible_hyperparameters():
-	number_steps = 10
+	number_steps = 3
 
 	optimizer_builders = [SGD, Adam, RMSprop]
 	learning_rates = create_sequence(0.0001, 0.1, number_steps)
@@ -272,7 +272,7 @@ def create_possible_hyperparameters():
 	
 	batch_sizes = create_sequence(32, 256, number_steps)	
 	possible_epochs = create_sequence(1, 100, number_steps)
-	possible_nb_layers = [3,4,5,6]
+	possible_nb_layers = [1,3,5]
 	dropouts = create_sequence(0.1, 0.5, number_steps)
 	
 	activation_functions = ["tanh", "sigmoid", "relu"]	
@@ -300,7 +300,7 @@ if __name__ == '__main__':
 	dataInfo = DataInfo(*get_data_single(datadir))
 	for hyperparameter in hyperparameters:
 		print("using this hyperparameter: ", hyperparameter)
-		accuracy_score_value = single_feature(dataInfo, hyperparameter, baseline_score=0.2)
+		accuracy_score_value = single_feature(dataInfo, hyperparameter, baseline_score=0.02)
 		if accuracy_score_value == None:
 			continue
 		hyperparameter_to_score.update({accuracy_score_value: hyperparameter})
