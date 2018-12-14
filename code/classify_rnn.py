@@ -183,7 +183,7 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 	labels = convert_labels(olabels)
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
 	print(X_train, np.nonzero(X_train))
-	print(y_train, y_train.shape)
+	print(np.nonzero(y_train), y_train.shape)
 	#y_train and y_test are sparse matrices with exactly one 1 on each row
 
 	model = create_model_single(max_len, hyperparameter)
