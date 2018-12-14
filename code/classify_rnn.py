@@ -177,18 +177,17 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, olabels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
-	print("features before reshape", features, features.shape)
 	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
-	print("features before split", features, features.shape)
+	a = features[0]
+	print('original label was', olabels[0])
 	labels = convert_labels(olabels)
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
-	print(X_train, np.nonzero(X_train))
-	print(np.nonzero(y_train), y_train.shape)
 	#y_train and y_test are sparse matrices with exactly one 1 on each row
+	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
 
 	model = create_model_single(max_len, hyperparameter)
 	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.2)
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15)
 	if fit_return.history['acc'][-1] < baseline_score:
 		return None
 	score = model.evaluate(X_test, y_test)
