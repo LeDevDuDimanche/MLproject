@@ -63,7 +63,7 @@ def create_model_single(MAX_SEQ_LEN, hyperparameter):
 			return_sequences=(i != hyperparameter.nb_layers - 1)
 		))
 
-	model.add(Dense(NUM_CLASSES, activation="sigmoid"))
+	model.add(Dense(NUM_CLASSES, activation="softmax"))
 
 	model.compile(loss='categorical_crossentropy',
 		optimizer=hyperparameter.optimizer,
