@@ -37,7 +37,7 @@ class LearnParams:
         self.dense_units = dense_units
         self.dense_activation_function = dense_activation_function
 
-def build_model(learn_params):
+def build_model(learn_params, max_length):
     """Build a CNN model using Keras"""
     model = Sequential()
 
@@ -47,7 +47,8 @@ def build_model(learn_params):
         kernel_size = learn_params.kernel_size,
         padding = learn_params.padding,
         activation = learn_params.activation_function,
-        strides = learn_params.strides
+        strides = learn_params.strides,
+        input_shape = (max_length, 1)
     ))
 
     # Build the rest of the layers
@@ -108,10 +109,15 @@ def run(data_info):
     features, olabels, max_len = data_info
     features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
     labels = convert_labels(olabels)
+    labels = np.reshape(labels, [labels.shape[0], labels.shape[1], 1])
     X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
 
+    print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
+
     # Build the model using the params
-    model = build_model(learn_params)
+    model = build_model(learn_params, max_len)
+
+
 
     # Define the metrics and optimizer used to compile the model
     metrics = ['accuracy']
@@ -125,7 +131,7 @@ def run(data_info):
         optimizer = optimizer,
         metrics = metrics
     )
-    print(model.summary())
+    #print(model.summary())
 
 
     # Fit the model on our training data, then evaluate it and try to predict the correct labels
