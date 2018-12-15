@@ -3,6 +3,7 @@ import collections
 import os
 import json
 import itertools
+from keras import metrics
 from keras.callbacks import EarlyStopping 
 from keras.models import Sequential, Model
 from keras.optimizers import Adam, RMSprop, SGD
@@ -17,7 +18,7 @@ BATCH_SIZE = 16
 EPOCHS = 100
 
 LSTM_DIM_SIZE = 32
-NUM_CLASSES = 100
+NUM_CLASSES = 20
 NUM_FEATURES = 2
 
 
@@ -67,7 +68,7 @@ def create_model_single(MAX_SEQ_LEN, hyperparameter):
 
 	model.compile(loss='categorical_crossentropy',
 		optimizer=hyperparameter.optimizer,
-		metrics=['accuracy'])
+		metrics=[metrics.categorical_accuracy])
 
 	return model
 
@@ -179,16 +180,15 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 	a = features[0]
-	print('original label was', olabels[0])
 	labels = convert_labels(olabels)
 	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
 	#y_train and y_test are sparse matrices with exactly one 1 on each row
 	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
 
 	model = create_model_single(max_len, hyperparameter)
-	early_stopping = EarlyStoppingOnBatch(monitor='acc' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15)
-	if fit_return.history['acc'][-1] < baseline_score:
+	early_stopping = EarlyStoppingOnBatch(monitor='categorical_accuracy' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
+	if fit_return.history['categorical_accuracy'][-1] < baseline_score:
 		return None
 	score = model.evaluate(X_test, y_test)
 	print("Score is", score)
@@ -296,8 +296,9 @@ if __name__ == '__main__':
 	# 	for line in lines:
 	# 		urls.append(line.strip())
 
-	datadir = "../data_cw100_day0_to_10/"
+	datadir = "../data_cw20_day0_to_30/"
 	hyperparameters = create_possible_hyperparameters()
+	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
 	dataInfo = DataInfo(*get_data_single(datadir))
 	for hyperparameter in hyperparameters:
