@@ -189,7 +189,7 @@ def single_feature(dataInfo, hyperparameter, baseline_score):
 	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
 
 	model = create_model_single(max_len, hyperparameter)
-	early_stopping = EarlyStoppingOnBatch(monitor='categorical_accuracy' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	early_stopping = EarlyStoppingOnBatch(monitor='categorical_accuracy' , min_delta=0.001, patience=5, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
 	if fit_return.history['categorical_accuracy'][-1] < baseline_score:
 		return None
@@ -266,8 +266,8 @@ def create_possible_hyperparameters():
 	number_steps = 3
 
 	optimizer_builders = [SGD, Adam, RMSprop]
-	learning_rates = create_sequence(0.0001, 0.1, number_steps)
-	decays = create_sequence(0, 0.9, number_steps)
+	learning_rates = create_sequence(0.01, 0.1, number_steps)
+	decays = create_sequence(0.1, 0.9, number_steps)
 
 	optimizers = []
 	for optimizer_builder in optimizer_builders:
@@ -299,13 +299,26 @@ if __name__ == '__main__':
 	# 	for line in lines:
 	# 		urls.append(line.strip())
 
-	datadir = "../data_cw20_day0_to_30/"
+	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
 	hyperparameters = create_possible_hyperparameters()
 	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
 	dataInfo = DataInfo(*get_data_single(datadir))
 	for hyperparameter in hyperparameters:
-		print("using this hyperparameter: ", hyperparameter)
+		field_names = hyperparameter._fields
+
+		def optimizer_to_str(optimizer):
+			return "\n\tlearning rate ->"+str(optimizer.lr)+"\n\tdecay -> "+str(optimizer.decay)
+			
+		printable_hyperparameter = ""
+		for i in range(len(field_names)):
+			printable_hyperparameter += "\n"+field_names[i]+" -> "
+			if field_names[i] == "optimizer":
+				printable_hyperparameter += optimizer_to_str(hyperparameter[i])
+			else:
+				printable_hyperparameter += str(hyperparameter[i])
+		
+		print("\nusing this hyperparameter: "+ printable_hyperparameter+"\n")
 		accuracy_score_value = single_feature(dataInfo, hyperparameter, baseline_score=0.02)
 		if accuracy_score_value == None:
 			continue
