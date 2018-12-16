@@ -99,8 +99,10 @@ def get_data_multi(data_folder, number_files_taken=None):
 	features = pad_sequences(features, maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
-def make_single_feature(slist, rlist, olist): 
+def make_single_feature(slist_param, rlist_param, olist): 
 	#reconstructs the traffic from the received, sent, order lists
+	rlist = list(rlist_param)
+	slist = list(slist_param)
 
 	#https://en.wikipedia.org/wiki/Feature_scaling
 	def scale_feature(x):
@@ -108,12 +110,13 @@ def make_single_feature(slist, rlist, olist):
 
 	def scale_feature_divide_by_each_max(x):
                 x = np.float64(x)
-                return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
+                return ((x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING) + 1.0) / 2.0
 
 
 	newlist = []
 	def treat_element(x):
 		newlist.append(scale_feature_divide_by_each_max(x))
+
 	for item in olist[::-1]:
 		if item == 1:
 			treat_element(slist.pop())
