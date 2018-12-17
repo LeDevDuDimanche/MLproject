@@ -17,13 +17,13 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 BATCH_SIZE = 16
 EPOCHS = 100
 
-LSTM_DIM_SIZE = 32
+LSTM_DIM_SIZE = 128 
 NUM_CLASSES = 20
 NUM_FEATURES = 2
 
 
-MAX_DESCENDING = 703 
-MAX_ASCENDING = 144
+MAX_DESCENDING = 703.0 
+MAX_ASCENDING = 144.0
 # if you run find_max.py you'll see that the maximum packet size for ascending packets is 144
 # and for descending packets is 703. We're going to use that for doing feature scaling
 
@@ -46,29 +46,27 @@ def create_model_multi(MAX_SEQ_LEN):
 def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
+	activation_func_LSTM = "relu" #hyperparameter.activation_function
+	dropout_LSTM = .2 #hyperparameter.dropout
+
 	model.add(LSTM(
 		units=LSTM_DIM_SIZE,
 		input_shape=(MAX_SEQ_LEN, 1),
-		activation=hyperparameter.activation_function,
-		dropout=hyperparameter.dropout,
+		activation=activation_func_LSTM,
+		dropout=dropout_LSTM,
 		return_sequences=True
-
-		
 	))
 
-	for i in range(hyperparameter.nb_layers):
-		model.add(LSTM(
-			units=LSTM_DIM_SIZE,
-			activation=hyperparameter.activation_function,
-			dropout=hyperparameter.dropout,
-			return_sequences=(i != hyperparameter.nb_layers - 1)
-		))
-
+	model.add(LSTM(
+		units=LSTM_DIM_SIZE,
+		activation=activation_func_LSTM
+	))
+	
 	model.add(Dense(NUM_CLASSES, activation="softmax"))
 
-	model.compile(loss='categorical_crossentropy',
-		optimizer=hyperparameter.optimizer,
-		metrics=[metrics.categorical_accuracy])
+	model.compile(loss='sparse_categorical_crossentropy', #categorical_crossentropy 
+		optimizer=Adam(lr=1e-3, decay=1e-5),
+		metrics=["accuracy"])
 
 	return model
 
@@ -115,15 +113,19 @@ def make_single_feature(slist_param, rlist_param, olist):
 
 	newlist = []
 	def treat_element(x):
-		newlist.append(scale_feature_divide_by_each_max(x))
+		newlist.append(x)
 
-	for item in olist[::-1]:
-		if item == 1:
-			treat_element(slist.pop())
-		else:
-			treat_element(rlist.pop() * -1)
-	
-	return newlist[::-1]
+	"""	received_i = 0
+		sent_i = 0
+		for item in olist:
+			if item == 1:
+				treat_element(slist[sent_i])
+				sent_i += 1
+			else:
+				treat_element(rlist[received_i] * -1)
+				received_i += 1
+	"""
+	return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
 
 
 def get_data_single(data_folder):
@@ -177,29 +179,53 @@ class EarlyStoppingOnBatch(EarlyStopping):
 						'the best batch')
 				self.model.set_weights(self.best_weights)
 
+def find_mean_and_standard_derivation(xs):
+	as_single_list = np.reshape(xs, (-1))	
+	mean = np.mean(as_single_list)
+	standard_derivation = np.std(as_single_list)
+	return mean, standard_derivation
+
+def standardize(xs, mean, standard_derivation):	
+	return (xs - mean) / standard_derivation
+
+
 def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, olabels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
 	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 	a = features[0]
-	labels = convert_labels(olabels)
-	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
+
+
+	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
+	mean, standard_derivation = find_mean_and_standard_derivation(X_train)
+
+	def f(xs): return standardize(xs, mean, standard_derivation)
+	X_train = f(X_train)
+	X_test = f(X_test) 
+
+	print("Y_TRAIN", y_train, "Y_TEST", y_test)
 	#y_train and y_test are sparse matrices with exactly one 1 on each row
 	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
 
 	model = create_model_single(max_len, hyperparameter)
-	early_stopping = EarlyStoppingOnBatch(monitor='categorical_accuracy' , min_delta=0.001, patience=5, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+
+	MONITOR = "acc"
+	early_stopping = EarlyStoppingOnBatch(monitor=MONITOR , min_delta=0.001, patience=5, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
-	if fit_return.history['categorical_accuracy'][-1] < baseline_score:
+	if fit_return.history[MONITOR][-1] < baseline_score:
 		return None
 	score = model.evaluate(X_test, y_test)
 	print("Score is", score)
-	print("Predictions :", model.predict(X_test))
-	y_pred = one_in_max_of_cols(model.predict(X_test).T).T
+	predictions = model.predict(X_test)
+	print("Predictions :", )
+	y_pred = one_in_max_of_cols(predictions.T).T
+	pu.db
 	ilabels = np.nonzero(y_pred)
 	print("correct labels were", np.nonzero(y_test), "infered labels are", ilabels)
-	res = accuracy_score(y_test, y_pred)
+
+	y_test_converted = convert_labels(y_test)
+	res = accuracy_score(y_test_converted, y_pred)
 	return res
 
 def convert_labels(Y):
