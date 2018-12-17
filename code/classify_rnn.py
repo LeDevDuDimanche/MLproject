@@ -1,5 +1,7 @@
 import numpy as np
+import pdb
 import collections
+import datetime
 import os
 import json
 import itertools
@@ -14,12 +16,12 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
-BATCH_SIZE = 16
-EPOCHS = 100
-
-LSTM_DIM_SIZE = 128 
+LSTM_DIM_SIZE = 32 
 NUM_CLASSES = 20
+BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
+
+MONITOR = "acc" #quantity used in EarlyStopping to verify that the score measured by MONITOR improves
 
 
 MAX_DESCENDING = 703.0 
@@ -43,29 +45,37 @@ def create_model_multi(MAX_SEQ_LEN):
 	return model
 
 
-def create_model_single(MAX_SEQ_LEN, hyperparameter):
+def create_model_single(hyperparameter):
 	
 	model = Sequential()
-	activation_func_LSTM = "relu" #hyperparameter.activation_function
-	dropout_LSTM = .2 #hyperparameter.dropout
+	activation_func_LSTM = hyperparameter.activation_function
+	dropout_LSTM = hyperparameter.dropout
 
 	model.add(LSTM(
-		units=LSTM_DIM_SIZE,
-		input_shape=(MAX_SEQ_LEN, 1),
+		units=hyperparameter.hidden_layers_size,
+		input_shape=(hyperparameter.input_length, 1),
 		activation=activation_func_LSTM,
-		dropout=dropout_LSTM,
-		return_sequences=True
+		dropout=dropout_LSTM#,
+		#return_sequences=True
 	))
 
-	model.add(LSTM(
-		units=LSTM_DIM_SIZE,
+	"""model.add(LSTM(
+		units=hyperparameter.hidden_layers_size,
 		activation=activation_func_LSTM
-	))
+	))"""
+
 	
 	model.add(Dense(NUM_CLASSES, activation="softmax"))
 
+
+	optimizer = hyperparameter.optimizer_builder(
+		lr= hyperparameter.lr, 
+		decay = hyperparameter.lr / 100.0
+	)
+
+
 	model.compile(loss='sparse_categorical_crossentropy', #categorical_crossentropy 
-		optimizer=Adam(lr=1e-3, decay=1e-5),
+		optimizer=optimizer,
 		metrics=["accuracy"])
 
 	return model
@@ -125,7 +135,8 @@ def make_single_feature(slist_param, rlist_param, olist):
 				treat_element(rlist[received_i] * -1)
 				received_i += 1
 	"""
-	return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
+	res = np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
+	return res
 
 
 def get_data_single(data_folder):
@@ -189,43 +200,43 @@ def standardize(xs, mean, standard_derivation):
 	return (xs - mean) / standard_derivation
 
 
-def single_feature(dataInfo, hyperparameter, baseline_score):
+def single_feature(dataInfo, hyperparameter):
 	features, olabels, max_len = dataInfo
 	#features[:, :, 0] /= np.max(features[:, :, 0])
 	#features[:, :, 1] /= np.max(features[:, :, 1])
-	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
+
+	features = features[:, 0:hyperparameter.input_length]
+	features = np.reshape(features, [features.shape[0], hyperparameter.input_length, 1]) #Add a dimension so keras is happy
+	
+
 	a = features[0]
 
 
 	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
+
 	mean, standard_derivation = find_mean_and_standard_derivation(X_train)
 
 	def f(xs): return standardize(xs, mean, standard_derivation)
 	X_train = f(X_train)
 	X_test = f(X_test) 
 
-	print("Y_TRAIN", y_train, "Y_TEST", y_test)
-	#y_train and y_test are sparse matrices with exactly one 1 on each row
-	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
+	#print("Y_TRAIN", y_train, "Y_TEST", y_test)
 
-	model = create_model_single(max_len, hyperparameter)
+	model = create_model_single(hyperparameter)
 
-	MONITOR = "acc"
 	early_stopping = EarlyStoppingOnBatch(monitor=MONITOR , min_delta=0.001, patience=5, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
-	if fit_return.history[MONITOR][-1] < baseline_score:
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs,
+		# callbacks=[early_stopping],
+		 validation_split= 0.15, shuffle= 'batch')
+
+	if fit_return.history[MONITOR][-1] < BASELINE_SCORE:
 		return None
 	score = model.evaluate(X_test, y_test)
 	print("Score is", score)
-	predictions = model.predict(X_test)
-	print("Predictions :", )
-	y_pred = one_in_max_of_cols(predictions.T).T
-	pu.db
-	ilabels = np.nonzero(y_pred)
-	print("correct labels were", np.nonzero(y_test), "infered labels are", ilabels)
+	predictions = model.predict_classes(X_test)
+	print("Predictions :", predictions)
 
-	y_test_converted = convert_labels(y_test)
-	res = accuracy_score(y_test_converted, y_pred)
+	res = accuracy_score(y_test, predictions)
 	return res
 
 def convert_labels(Y):
@@ -286,33 +297,34 @@ def create_sequence(min_val, max_val, number_steps):
 		i+=1 
 	return sequence
 
-Hyperparameter = collections.namedtuple("Hyperparameter", "optimizer batch_size epochs nb_layers dropout activation_function")
+#truncation index is the length at which we discard the features inputs
+Hyperparameter = collections.namedtuple("Hyperparameter", "hidden_layers_size optimizer_builder lr batch_size epochs dropout activation_function input_length")
 
 def create_possible_hyperparameters():
 	number_steps = 3
 
-	optimizer_builders = [SGD, Adam, RMSprop]
-	learning_rates = create_sequence(0.01, 0.1, number_steps)
-	decays = create_sequence(0.1, 0.9, number_steps)
+	hidden_layers_sizes = create_sequence(32, 100, 3)
 
-	optimizers = []
-	for optimizer_builder in optimizer_builders:
-		for lr in learning_rates:
-			for decay in decays:
-				optimizers.append(optimizer_builder(lr=lr, decay=decay))
-	
+	optimizer_builders = [SGD, Adam, RMSprop]
+	learning_rates = create_sequence(0.001, 0.1, number_steps)
+
 	batch_sizes = create_sequence(32, 256, number_steps)	
 	possible_epochs = create_sequence(1, 10, number_steps)
-	possible_nb_layers = [1,3,5]
+#	possible_nb_layers = [1,3,5] #TODO add it after
 	dropouts = create_sequence(0.1, 0.5, number_steps)
 	
-	activation_functions = ["tanh", "sigmoid", "relu"]	
+	activation_functions = ["sigmoid", "relu"] #TODO try tanh?
+
+	input_length = create_sequence(100, 400, 3)
 	
-	cartesian_prod_result = itertools.product(optimizers, batch_sizes, possible_epochs, possible_nb_layers, dropouts, activation_functions)
+	cartesian_prod_result = itertools.product(hidden_layers_sizes, optimizer_builders, learning_rates, batch_sizes, 
+		possible_epochs, #possible_nb_layers, TODO add this param
+		dropouts, activation_functions, input_length)
 	hyperparameters = []
 	for hyperparameter_tuple in cartesian_prod_result:
 		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
 
+	print("There are {0} possible hyperparameters\n\n".format(len(hyperparameters)))
 	return hyperparameters
 	
 	
@@ -327,25 +339,40 @@ if __name__ == '__main__':
 
 	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
 	hyperparameters = create_possible_hyperparameters()
-	np.random.shuffle(hyperparameters)
+#	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
 	dataInfo = DataInfo(*get_data_single(datadir))
-	for hyperparameter in hyperparameters:
-		field_names = hyperparameter._fields
 
-		def optimizer_to_str(optimizer):
-			return "\n\tlearning rate ->"+str(optimizer.lr)+"\n\tdecay -> "+str(optimizer.decay)
-			
-		printable_hyperparameter = ""
-		for i in range(len(field_names)):
-			printable_hyperparameter += "\n"+field_names[i]+" -> "
-			if field_names[i] == "optimizer":
-				printable_hyperparameter += optimizer_to_str(hyperparameter[i])
-			else:
-				printable_hyperparameter += str(hyperparameter[i])
-		
-		print("\nusing this hyperparameter: "+ printable_hyperparameter+"\n")
-		accuracy_score_value = single_feature(dataInfo, hyperparameter, baseline_score=0.02)
-		if accuracy_score_value == None:
-			continue
-		hyperparameter_to_score.update({accuracy_score_value: hyperparameter})
+	def get_dated_file_name(prefix):
+		now = datetime.datetime.utcnow()
+		return "{0}_d{1}_{2}h_{3}m".format(prefix, now.day, now.hour, now.minute)
+
+	log_file_name = get_dated_file_name("../logs/log_train")
+
+
+	result_filename = get_dated_file_name("../results/result_file")
+	def update_result_file(nb_tried):
+		print("UPDATING RESULT FILE")
+		sorted_keys = sorted(hyperparameter_to_score, reverse=True)
+		with open(result_filename, "w") as f:
+			f.write("tried the first {0} hyperparameters\n".format(nb_tried))
+			f.write("accuracy_score\thyperparameter\n")
+			for key in sorted_keys: 
+				f.write("{0}\t{1}\n".format(key, hyperparameter_to_score.get(key)))
+
+	i = 0
+	with open(log_file_name, "a") as log_file:
+		for hyperparameter in hyperparameters:
+			print("\nusing this hyperparameter: "+ str(hyperparameter)+"\n")
+
+			accuracy_score_value = single_feature(dataInfo, hyperparameter)
+			if accuracy_score_value == None:
+				print("=============DISCARDING MODEL============")
+				continue
+
+			result = {accuracy_score_value: hyperparameter}
+			log_file.write("accuracy score: {0}, hyperparameter: {1}\n".format(accuracy_score_value, hyperparameter))
+			hyperparameter_to_score.update(result)
+			update_result_file(i+1)
+
+			i+=1
