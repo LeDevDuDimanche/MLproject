@@ -110,7 +110,7 @@ def make_single_feature(slist, rlist, olist):
 		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
 
 	def scale_feature_divide_by_each_max(x):
-                x = np.float64(x)
+		x = np.float64(x)
 		return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
 
 	def alternate_received_and_sent():
