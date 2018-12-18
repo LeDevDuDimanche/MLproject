@@ -7,14 +7,14 @@ from keras import metrics
 from keras.callbacks import EarlyStopping 
 from keras.models import Sequential, Model
 from keras.optimizers import Adam, RMSprop, SGD
-from keras.layers import LSTM, Dense, Dropout, Concatenate, Input
+from keras.layers import LSTM, Dense, Dropout, Concatenate, Input, Reshape
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical, np_utils
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
-BATCH_SIZE = 16
+BATCH_SIZE = 128
 EPOCHS = 100
 
 LSTM_DIM_SIZE = 32
@@ -46,29 +46,24 @@ def create_model_multi(MAX_SEQ_LEN):
 def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
+	model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
 	model.add(LSTM(
 		units=LSTM_DIM_SIZE,
-		input_shape=(MAX_SEQ_LEN, 1),
+		#,
 		activation=hyperparameter.activation_function,
-		dropout=hyperparameter.dropout,
-		return_sequences=True
+		dropout=hyperparameter.dropout#,
+		#return_sequences=True
 
 		
 	))
 
-	for i in range(hyperparameter.nb_layers):
-		model.add(LSTM(
-			units=LSTM_DIM_SIZE,
-			activation=hyperparameter.activation_function,
-			dropout=hyperparameter.dropout,
-			return_sequences=(i != hyperparameter.nb_layers - 1)
-		))
 
 	model.add(Dense(NUM_CLASSES, activation="softmax"))
 
-	model.compile(loss='categorical_crossentropy',
+	model.compile(loss='sparse_categorical_crossentropy',
 		optimizer=hyperparameter.optimizer,
-		metrics=[metrics.categorical_accuracy])
+		metrics=[metrics.sparse_categorical_accuracy])#,
+		#class_mode = 'binary')
 
 	return model
 
@@ -144,7 +139,7 @@ def get_data_single(data_folder):
 					MAX_SEQ_LEN = len(new_list)
 				features.append(new_list)
 				labels.append(int(k[:-5]))
-	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN, padding='post')
+	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
 
@@ -176,27 +171,22 @@ class EarlyStoppingOnBatch(EarlyStopping):
 
 def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, olabels, max_len = dataInfo
-	#features[:, :, 0] /= np.max(features[:, :, 0])
-	#features[:, :, 1] /= np.max(features[:, :, 1])
+
 	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
-	a = features[0]
-	labels = convert_labels(olabels)
-	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)#shuffles the data by default
-	#y_train and y_test are sparse matrices with exactly one 1 on each row
-	#train and test set are sane i.e train_x[idx]<->train_y[idx] are valid sample-label couples (Jules)
+	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
+	y_train = np.reshape(y_train, [len(y_train), 1])
 
 	model = create_model_single(max_len, hyperparameter)
-	early_stopping = EarlyStoppingOnBatch(monitor='categorical_accuracy' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	print(model.summary())
+	early_stopping = EarlyStoppingOnBatch(monitor='loss' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
-	if fit_return.history['categorical_accuracy'][-1] < baseline_score:
-		return None
+
 	score = model.evaluate(X_test, y_test)
-	print("Score is", score)
-	print("Predictions :", model.predict(X_test))
-	y_pred = one_in_max_of_cols(model.predict(X_test).T).T
-	ilabels = np.nonzero(y_pred)
-	print("correct labels were", np.nonzero(y_test), "infered labels are", ilabels)
+	y_pred = model.predict_classes(X_test)
+	ilabels = y_pred
+	print("correct labels were", y_test, "infered labels are", ilabels)
 	res = accuracy_score(y_test, y_pred)
+	print("accuracy is", res)
 	return res
 
 def convert_labels(Y):
