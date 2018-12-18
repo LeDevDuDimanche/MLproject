@@ -339,7 +339,7 @@ if __name__ == '__main__':
 
 	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
 	hyperparameters = create_possible_hyperparameters()
-#	np.random.shuffle(hyperparameters)
+	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
 	dataInfo = DataInfo(*get_data_single(datadir))
 
