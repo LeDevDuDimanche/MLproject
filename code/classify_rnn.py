@@ -21,8 +21,6 @@ NUM_CLASSES = 20
 BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
 
-MONITOR = "acc" #quantity used in EarlyStopping to verify that the score measured by MONITOR improves
-
 
 MAX_DESCENDING = 703.0 
 MAX_ASCENDING = 144.0
@@ -49,18 +47,20 @@ def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
 	model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
+
+	for i in range(hyperparameter.nb_layers):
+		model.add(LSTM(
+			units=LSTM_DIM_SIZE,
+			activation=hyperparameter.activation_function,
+			dropout=hyperparameter.dropout,
+			return_sequences=True
+		))
+	
 	model.add(LSTM(
 		units=LSTM_DIM_SIZE,
-		#,
 		activation=hyperparameter.activation_function,
-		dropout=hyperparameter.dropout#,
-		#return_sequences=True
+		dropout=hyperparameter.dropout
 	))
-	
-	"""model.add(LSTM(
-		units=LSTM_DIM_SIZE,
-		activation=activation_func_LSTM
-	))"""
 
 	model.add(Dense(NUM_CLASSES, activation="softmax"))
 
@@ -104,36 +104,33 @@ def get_data_multi(data_folder, number_files_taken=None):
 	features = pad_sequences(features, maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
-def make_single_feature(slist_param, rlist_param, olist): 
-	#reconstructs the traffic from the received, sent, order lists
-	rlist = list(rlist_param)
-	slist = list(slist_param)
-
+def make_single_feature(slist, rlist, olist):
 	#https://en.wikipedia.org/wiki/Feature_scaling
 	def scale_feature(x):
 		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
 
 	def scale_feature_divide_by_each_max(x):
                 x = np.float64(x)
-                return ((x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING) + 1.0) / 2.0
+		return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
 
+	def alternate_received_and_sent():
+		newlist = []
+		def treat_element(x):
+			newlist.append(scale_feature_divide_by_each_max(x))
 
-	newlist = []
-	def treat_element(x):
-		newlist.append(x)
-
-	"""	received_i = 0
-		sent_i = 0
-		for item in olist:
+		for item in olist[::-1]:
 			if item == 1:
-				treat_element(slist[sent_i])
-				sent_i += 1
+				treat_element(slist.pop())
 			else:
-				treat_element(rlist[received_i] * -1)
-				received_i += 1
-	"""
-	res = np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
-	return res
+				treat_element(rlist.pop() * -1)
+		return newlist[::-1]
+
+	def concat():
+		return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
+		#TODO in the paper say we tried concatenating the sent and the received it gives 10% less accuracy
+
+	return alternate_received_and_sent()
+
 
 
 def get_data_single(data_folder):
@@ -276,7 +273,7 @@ def create_sequence(min_val, max_val, number_steps):
 	return sequence
 
 #truncation index is the length at which we discard the features inputs
-Hyperparameter = collections.namedtuple("Hyperparameter", "decay optimizer_builder lr batch_size epochs dropout activation_function")
+Hyperparameter = collections.namedtuple("Hyperparameter", "nb_layers decay optimizer_builder lr batch_size epochs dropout activation_function")
 
 def create_possible_hyperparameters():
 	number_steps = 3
@@ -289,13 +286,13 @@ def create_possible_hyperparameters():
 
 	batch_sizes = create_sequence(32, 256, number_steps)	
 	possible_epochs = create_sequence(1, 10, number_steps)
-#	possible_nb_layers = [1,3,5] #TODO add it after
+	possible_nb_layers = [0,1,2] #TODO add it after
 	dropouts = create_sequence(0.1, 0.5, number_steps)
 	
 	activation_functions = ["sigmoid", "relu", "tanh"] 
 
 	
-	cartesian_prod_result = itertools.product(decays, optimizer_builders, learning_rates, batch_sizes, 
+	cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
 		possible_epochs, #possible_nb_layers, TODO add this param
 		dropouts, activation_functions)
 	hyperparameters = []
