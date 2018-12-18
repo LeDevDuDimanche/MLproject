@@ -62,7 +62,7 @@ def create_model_single(MAX_SEQ_LEN, hyperparameter):
 
 	model.compile(loss='sparse_categorical_crossentropy',
 		optimizer=hyperparameter.optimizer,
-		metrics=[metrics.sparse_categorical_accuracy])#,
+		metrics=[metrics.categorical_accuracy])#,
 		#class_mode = 'binary')
 
 	return model
@@ -171,7 +171,7 @@ class EarlyStoppingOnBatch(EarlyStopping):
 
 def single_feature(dataInfo, hyperparameter, baseline_score):
 	features, olabels, max_len = dataInfo
-
+	
 	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
 	y_train = np.reshape(y_train, [len(y_train), 1])
