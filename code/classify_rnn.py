@@ -9,14 +9,14 @@ from keras import metrics
 from keras.callbacks import EarlyStopping 
 from keras.models import Sequential, Model
 from keras.optimizers import Adam, RMSprop, SGD
-from keras.layers import LSTM, Dense, Dropout, Concatenate, Input
+from keras.layers import LSTM, Dense, Dropout, Concatenate, Input, Reshape
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical, np_utils
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
-LSTM_DIM_SIZE = 32 
+LSTM_DIM_SIZE = 32
 NUM_CLASSES = 20
 BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
@@ -45,38 +45,35 @@ def create_model_multi(MAX_SEQ_LEN):
 	return model
 
 
-def create_model_single(hyperparameter):
+def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
-	activation_func_LSTM = hyperparameter.activation_function
-	dropout_LSTM = hyperparameter.dropout
-
+	model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
 	model.add(LSTM(
-		units=hyperparameter.hidden_layers_size,
-		input_shape=(hyperparameter.input_length, 1),
-		activation=activation_func_LSTM,
-		dropout=dropout_LSTM#,
+		units=LSTM_DIM_SIZE,
+		#,
+		activation=hyperparameter.activation_function,
+		dropout=hyperparameter.dropout#,
 		#return_sequences=True
 	))
-
+	
 	"""model.add(LSTM(
-		units=hyperparameter.hidden_layers_size,
+		units=LSTM_DIM_SIZE,
 		activation=activation_func_LSTM
 	))"""
 
-	
 	model.add(Dense(NUM_CLASSES, activation="softmax"))
-
 
 	optimizer = hyperparameter.optimizer_builder(
 		lr= hyperparameter.lr, 
-		decay = hyperparameter.lr / 100.0
+		decay = hyperparameter.decay 
 	)
 
 
-	model.compile(loss='sparse_categorical_crossentropy', #categorical_crossentropy 
+	model.compile(loss='sparse_categorical_crossentropy',
 		optimizer=optimizer,
-		metrics=["accuracy"])
+		metrics=[metrics.sparse_categorical_accuracy])#,
+		#class_mode = 'binary')
 
 	return model
 
@@ -160,7 +157,7 @@ def get_data_single(data_folder):
 					MAX_SEQ_LEN = len(new_list)
 				features.append(new_list)
 				labels.append(int(k[:-5]))
-	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN, padding='post')
+	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
 	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
 
@@ -202,41 +199,22 @@ def standardize(xs, mean, standard_derivation):
 
 def single_feature(dataInfo, hyperparameter):
 	features, olabels, max_len = dataInfo
-	#features[:, :, 0] /= np.max(features[:, :, 0])
-	#features[:, :, 1] /= np.max(features[:, :, 1])
 
-	features = features[:, 0:hyperparameter.input_length]
-	features = np.reshape(features, [features.shape[0], hyperparameter.input_length, 1]) #Add a dimension so keras is happy
-	
-
-	a = features[0]
-
-
+	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
+	y_train = np.reshape(y_train, [len(y_train), 1])
 
-	mean, standard_derivation = find_mean_and_standard_derivation(X_train)
+	model = create_model_single(max_len, hyperparameter)
+	print(model.summary())
+	early_stopping = EarlyStoppingOnBatch(monitor='loss' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
 
-	def f(xs): return standardize(xs, mean, standard_derivation)
-	X_train = f(X_train)
-	X_test = f(X_test) 
-
-	#print("Y_TRAIN", y_train, "Y_TEST", y_test)
-
-	model = create_model_single(hyperparameter)
-
-	early_stopping = EarlyStoppingOnBatch(monitor=MONITOR , min_delta=0.001, patience=5, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs,
-		# callbacks=[early_stopping],
-		 validation_split= 0.15, shuffle= 'batch')
-
-	if fit_return.history[MONITOR][-1] < BASELINE_SCORE:
-		return None
 	score = model.evaluate(X_test, y_test)
-	print("Score is", score)
-	predictions = model.predict_classes(X_test)
-	print("Predictions :", predictions)
-
-	res = accuracy_score(y_test, predictions)
+	y_pred = model.predict_classes(X_test)
+	ilabels = y_pred
+	print("correct labels were", y_test, "infered labels are", ilabels)
+	res = accuracy_score(y_test, y_pred)
+	print("accuracy is", res)
 	return res
 
 def convert_labels(Y):
@@ -298,28 +276,28 @@ def create_sequence(min_val, max_val, number_steps):
 	return sequence
 
 #truncation index is the length at which we discard the features inputs
-Hyperparameter = collections.namedtuple("Hyperparameter", "hidden_layers_size optimizer_builder lr batch_size epochs dropout activation_function input_length")
+Hyperparameter = collections.namedtuple("Hyperparameter", "decay optimizer_builder lr batch_size epochs dropout activation_function")
 
 def create_possible_hyperparameters():
 	number_steps = 3
 
-	hidden_layers_sizes = create_sequence(32, 100, 3)
+	decays = create_sequence(0, 0.9, number_steps)
+
 
 	optimizer_builders = [SGD, Adam, RMSprop]
-	learning_rates = create_sequence(0.001, 0.1, number_steps)
+	learning_rates = create_sequence(0.0001, 0.1, number_steps)
 
 	batch_sizes = create_sequence(32, 256, number_steps)	
 	possible_epochs = create_sequence(1, 10, number_steps)
 #	possible_nb_layers = [1,3,5] #TODO add it after
 	dropouts = create_sequence(0.1, 0.5, number_steps)
 	
-	activation_functions = ["sigmoid", "relu"] #TODO try tanh?
+	activation_functions = ["sigmoid", "relu", "tanh"] 
 
-	input_length = create_sequence(100, 400, 3)
 	
-	cartesian_prod_result = itertools.product(hidden_layers_sizes, optimizer_builders, learning_rates, batch_sizes, 
+	cartesian_prod_result = itertools.product(decays, optimizer_builders, learning_rates, batch_sizes, 
 		possible_epochs, #possible_nb_layers, TODO add this param
-		dropouts, activation_functions, input_length)
+		dropouts, activation_functions)
 	hyperparameters = []
 	for hyperparameter_tuple in cartesian_prod_result:
 		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
