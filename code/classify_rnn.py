@@ -18,6 +18,7 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 
 LSTM_DIM_SIZE = 32
 NUM_CLASSES = 20
+NUM_DAYS = 10000
 BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
 
@@ -200,7 +201,7 @@ if __name__ == '__main__':
 	# 		urls.append(line.strip())
 	
 	np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
-	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_10000/"
+	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
 	hyperparameters = create_possible_hyperparameters()
 	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}

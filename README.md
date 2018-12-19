@@ -17,4 +17,12 @@ Code for CS433 Project 2
 - For each webpage, there are three values. **sent** is the sequence of sent pcaket sizes. **received** is the sequence of received packet sizes. **order** is the sequence in which packets where sent or received — -1 indicates a received packet and 1 indicates a sent packet.
 
   
+###How to run
 
+- Run the create_closed_world script in the /code/ directory. It will create a data directory with the filtered json files. You can modify the number of categories in the closed world as well as the number of days to filter. Default is 20, 10 000 (the whole time period)
+
+- Create a 'results' and a 'logs' directories at the same level as data/ and code/. The NN scripts will save the accuracies and hyperparameters there.
+
+- In classify_rnn.py and classify_cnn.py, change the NUM_CLASSES and NUM_DAYS global variables by the parameters you changed in create_closed_world, if you did change them. Default are 20, 10 000.
+
+- Just run them like it's hot :-)
