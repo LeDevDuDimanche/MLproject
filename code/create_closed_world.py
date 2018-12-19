@@ -61,4 +61,4 @@ def create_closed_world(nb_websites=100, max_days_after=10, input_dir="../data/"
 	#with the content of the file being only the object n.pcap where n <= nb_websites
 
 if __name__ == '__main__':
-	create_closed_world(nb_websites=20, max_days_after=30)
+	create_closed_world(nb_websites=20, max_days_after=10000)

@@ -29,20 +29,6 @@ MAX_ASCENDING = 144.0
 
 
 
-def create_model_multi(MAX_SEQ_LEN):
-	
-	model = Sequential()
-	model.add(LSTM(LSTM_DIM_SIZE, input_shape=(MAX_SEQ_LEN, NUM_FEATURES)))
-	model.add(Dropout(0.2))
-	model.add(Dense(units=NUM_CLASSES, activation='softmax'))
-
-	model.compile(loss='categorical_crossentropy',
-		optimizer='adam',
-		metrics=['accuracy'])
-
-	return model
-
-
 def create_model_single(MAX_SEQ_LEN, hyperparameter):
 	
 	model = Sequential()
@@ -77,32 +63,6 @@ def create_model_single(MAX_SEQ_LEN, hyperparameter):
 
 	return model
 
-
-#zips the sent and received data of pcaps structs, outputs a list of this pcaps traces (list) through all the files.
-# -> aggregates data from different files
-#saves an array of pcap identifiers in-order with the corresponding pcap list
-# list of list( (s1 r1 s2 r2 .....) )
-def get_data_multi(data_folder, number_files_taken=None):
-	
-	flist = os.listdir(data_folder)
-	if number_files_taken != None:
-		flist = flist[0 : min(len(flist), number_files_taken)]
-	features = []
-	labels = []
-	MAX_SEQ_LEN = 0
-	for fname in flist:
-		print(fname)
-		with open(data_folder + fname) as f:
-			data_dict = json.loads(f.read())
-			for k, v in sorted(data_dict.items()):
-				# TODO(sandra): Offset and normalize times to [0, 1]
-				feature = zip(v['sent'], v['received']) #Jules : does this discard the last elements of the longest list ?
-				if len(v['received']) > MAX_SEQ_LEN:
-					MAX_SEQ_LEN = len(v['received'])
-				features.append(list(feature)) #Putting all features
-				labels.append(int(k[:-5]))
-	features = pad_sequences(features, maxlen=MAX_SEQ_LEN)
-	return np.array(features), np.array(labels), MAX_SEQ_LEN
 
 def make_single_feature(slist, rlist, olist):
 	#https://en.wikipedia.org/wiki/Feature_scaling
@@ -160,29 +120,6 @@ def get_data_single(data_folder):
 
 DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
 
-class EarlyStoppingOnBatch(EarlyStopping):
-	def on_epoch_end(self, epoch, logs=None):
-		pass
-	def on_batch_end(self, batch, logs=None):
-		current = self.get_monitor_value(logs)
-		if current is None:
-			return
-
-		if self.monitor_op(current - self.min_delta, self.best):
-			self.best = current
-			self.wait = 0
-			if self.restore_best_weights:
-				self.best_weights = self.model.get_weights()
-		else:
-			self.wait += 1
-			if self.wait >= self.patience:
-				self.batch = batch 
-				self.model.stop_training = True
-			if self.restore_best_weights:
-				if self.verbose > 0:
-					print('Restoring model weights from the end of '
-						'the best batch')
-				self.model.set_weights(self.best_weights)
 
 def find_mean_and_standard_derivation(xs):
 	as_single_list = np.reshape(xs, (-1))	
@@ -203,8 +140,7 @@ def single_feature(dataInfo, hyperparameter):
 
 	model = create_model_single(max_len, hyperparameter)
 	print(model.summary())
-	early_stopping = EarlyStoppingOnBatch(monitor='loss' , min_delta=0.001, patience=25, verbose=0, mode='auto', baseline=0.01, restore_best_weights=False)
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, epochs=hyperparameter.epochs, callbacks=[early_stopping], validation_split= 0.15, shuffle= 'batch')
+	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, callbacks =[EarlyStopping(min_delta=0.03, patience=1) ],epochs=hyperparameter.epochs, validation_split= 0.05, shuffle= 'batch')
 
 	score = model.evaluate(X_test, y_test)
 	y_pred = model.predict_classes(X_test)
@@ -214,54 +150,6 @@ def single_feature(dataInfo, hyperparameter):
 	print("accuracy is", res)
 	return res
 
-def convert_labels(Y):
-	#one-hot
-	# encoder = LabelEncoder()
-	# encoder.fit(Y)
-	# encoded_Y = encoder.transform(Y)
-	# new_y = np_utils.to_categorical(encoded_Y)
-	new_y = to_categorical(Y, num_classes=NUM_CLASSES)
-
-	return new_y
-
-#this function takes a matrix
-#of dimension N*D and transforms each column
-# such that only a one is left in each column.
-# the one is left in the column where the maximum value of that column is located.
-# e.g. if input is 
-#     [[.4 .5 .7]
-#      [.2 .9 .3]
-#      [.1 .8 .3]]
-#output would be 
-#     [[1  0  1]
-#      [0  1  0]
-#      [0  0  0]]	
-def one_in_max_of_cols(matrix):
-	row_index_of_maximums = np.argmax(matrix, axis=0)
-	first_column = matrix[:,0]
-	new_columns = []
-	for max_index in row_index_of_maximums: 
-	    zeros = np.zeros_like(first_column)
-	    zeros[max_index] = 1
-	    new_columns.append(zeros)
-	return np.stack(new_columns, axis=1)
-
-def multi_feature(data_folder, number_files_for_training=None):
-
-	features, labels, max_len = get_data_multi(data_folder, number_files_for_training)
-	#To-do
-	#features[:, :, 0] /= np.max(features[:, :, 0])
-	#features[:, :, 1] /= np.max(features[:, :, 1])
-	features = np.reshape(features, [features.shape[0], max_len, NUM_FEATURES])
-	labels = convert_labels(labels)
-	X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=.2)
-	print(len(X_train), len(y_train), len(X_test), len(y_test))
-	model = create_model_multi(max_len)
-	model.fit(X_train, y_train, batch_size=16, epochs=1)
-	score = model.evaluate(X_test, y_test)
-	print(score)
-	y_pred = one_in_max_of_cols(model.predict(X_test))
-	print(accuracy_score(y_test, y_pred))
 
 def create_sequence(min_val, max_val, number_steps):
 	i = 0
@@ -276,7 +164,7 @@ def create_sequence(min_val, max_val, number_steps):
 Hyperparameter = collections.namedtuple("Hyperparameter", "nb_layers decay optimizer_builder lr batch_size epochs dropout activation_function")
 
 def create_possible_hyperparameters():
-	number_steps = 3
+	number_steps = 5
 
 	decays = create_sequence(0, 0.9, number_steps)
 
@@ -284,17 +172,16 @@ def create_possible_hyperparameters():
 	optimizer_builders = [SGD, Adam, RMSprop]
 	learning_rates = create_sequence(0.0001, 0.1, number_steps)
 
-	batch_sizes = create_sequence(32, 256, number_steps)	
-	possible_epochs = create_sequence(1, 10, number_steps)
-	possible_nb_layers = [0,1,2] #TODO add it after
-	dropouts = create_sequence(0.1, 0.5, number_steps)
+	batch_sizes = create_sequence(16, 256, number_steps)	
+	possible_epochs = create_sequence(1, 50, number_steps)
+	possible_nb_layers = [0,1,2,4,5,6] 
+	dropouts = create_sequence(0, 0.5, number_steps)
 	
 	activation_functions = ["sigmoid", "relu", "tanh"] 
 
 	
 	cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
-		possible_epochs, #possible_nb_layers, TODO add this param
-		dropouts, activation_functions)
+		possible_epochs, dropouts, activation_functions)
 	hyperparameters = []
 	for hyperparameter_tuple in cartesian_prod_result:
 		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
@@ -311,8 +198,9 @@ if __name__ == '__main__':
 	# 	lines = f.readlines()
 	# 	for line in lines:
 	# 		urls.append(line.strip())
-
-	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
+	
+	np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
+	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_10000/"
 	hyperparameters = create_possible_hyperparameters()
 	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
