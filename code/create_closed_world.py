@@ -7,7 +7,7 @@ from datetime import timedelta, datetime
 
 #creates a subsample of the dataset in "../data" with the data from only the nb_websites most popular websites
 #the interval of time we consider is (if d0 = first day of data collection)  [d0 , d0 + max_days_after]
-def create_closed_world(nb_websites=100, max_days_after=10, input_dir="../data/"):
+def create_closed_world(nb_websites=20, max_days_after=10000, input_dir="../data/"):
 	
 	all_data_files = [f for f in os.listdir(input_dir) if isfile(join(input_dir, f))]
 	file_name_pattern = r'(\d\d)-(\d\d)-(\d\d).*\.json'
@@ -61,4 +61,4 @@ def create_closed_world(nb_websites=100, max_days_after=10, input_dir="../data/"
 	#with the content of the file being only the object n.pcap where n <= nb_websites
 
 if __name__ == '__main__':
-	create_closed_world(nb_websites=20, max_days_after=10000)
+	create_closed_world(nb_websites=50, max_days_after=10000)

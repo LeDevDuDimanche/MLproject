@@ -16,8 +16,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
-LSTM_DIM_SIZE = 32
-NUM_CLASSES = 20
+NUM_CLASSES = 50
 NUM_DAYS = 10000
 BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
@@ -31,7 +30,7 @@ MAX_ASCENDING = 144.0
 
 
 def create_model_single(MAX_SEQ_LEN, hyperparameter):
-	
+	LSTM_DIM_SIZE = hyperparameter.nb_units
 	model = Sequential()
 	model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
 
@@ -144,12 +143,9 @@ def single_feature(dataInfo, hyperparameter):
 	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, callbacks =[EarlyStopping(min_delta=0.03, patience=1) ],epochs=hyperparameter.epochs, validation_split= 0.05, shuffle= 'batch')
 
 	score = model.evaluate(X_test, y_test)
-	y_pred = model.predict_classes(X_test)
-	ilabels = y_pred
-	print("correct labels were", y_test, "infered labels are", ilabels)
-	res = accuracy_score(y_test, y_pred)
-	print("accuracy is", res)
-	return res
+
+	print("accuracy is", score[1])
+	return score[1]
 
 
 def create_sequence(min_val, max_val, number_steps):
@@ -162,14 +158,14 @@ def create_sequence(min_val, max_val, number_steps):
 	return sequence
 
 #truncation index is the length at which we discard the features inputs
-Hyperparameter = collections.namedtuple("Hyperparameter", "nb_layers decay optimizer_builder lr batch_size epochs dropout activation_function")
+Hyperparameter = collections.namedtuple("Hyperparameter", "nb_layers decay optimizer_builder lr batch_size epochs dropout activation_function nb_units")
 
 def create_possible_hyperparameters():
 	number_steps = 5
 
 	decays = create_sequence(0, 0.9, number_steps)
 
-
+	nb_units = create_sequence(16, 128, number_steps)
 	optimizer_builders = [SGD, Adam, RMSprop]
 	learning_rates = create_sequence(0.0001, 0.1, number_steps)
 
@@ -182,7 +178,7 @@ def create_possible_hyperparameters():
 
 	
 	cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
-		possible_epochs, dropouts, activation_functions)
+		possible_epochs, dropouts, activation_functions, nb_units)
 	hyperparameters = []
 	for hyperparameter_tuple in cartesian_prod_result:
 		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
