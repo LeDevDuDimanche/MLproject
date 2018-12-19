@@ -3,7 +3,7 @@ import collections
 import os
 import json
 import itertools
-from classify_rnn import DataInfo, get_data_single, convert_labels, one_in_max_of_cols
+from classify_rnn import DataInfo, get_data_single
 from keras import metrics
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential, Model
@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 BATCH_SIZE = 16
-EPOCHS = 3
+EPOCHS = 6
 
 LSTM_DIM_SIZE = 32
 NUM_CLASSES = 20
@@ -48,16 +48,15 @@ def build_model(learn_params, max_length):
     # Build first layer
     model.add(Dropout(input_shape = (max_length, 1), rate = learn_params.dropout_rate))
 
+    # Build the rest of the layers
     model.add(Conv1D(
         filters = learn_params.filters,
         kernel_size = learn_params.kernel_size,
         padding = learn_params.padding,
         activation = learn_params.activation_function,
         strides = learn_params.strides
-        #input_shape = (None, max_length)
+        #input_shape = (max_length, 1)
     ))
-
-    # Build the rest of the layers
 
     # Add a MaxPooling layer
     model.add(MaxPooling1D(
@@ -170,6 +169,7 @@ def run(data_info):
     return res
 
 if __name__ == '__main__':
-    datadir = "../data_cw20_day0_to_30/"
+    np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
+    datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
     data_info = DataInfo(*get_data_single(datadir))
     acc_score_value = run(data_info)
