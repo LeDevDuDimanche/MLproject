@@ -214,7 +214,7 @@ if __name__ == '__main__':
 	log_file_name = get_dated_file_name("../logs/log_train")
 
 
-	result_filename = get_dated_file_name("../results/result_file")
+	result_filename = get_dated_file_name("../results/result_file_LSTM"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
 	def update_result_file(nb_tried):
 		print("UPDATING RESULT FILE")
 		sorted_keys = sorted(hyperparameter_to_score, reverse=True)
