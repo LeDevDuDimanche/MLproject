@@ -3,7 +3,8 @@ import collections
 import os
 import json
 import itertools
-from classify_rnn import DataInfo, get_data_single
+import datetime
+from classify_LSTM import DataInfo, get_data_single, create_sequence
 from keras import metrics
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential, Model
@@ -167,10 +168,75 @@ def run(data_info):
     print("correct labels were", y_test, "infered labels are", ilabels)
     res = accuracy_score(y_test, y_pred)
     print("accuracy is", res)
+    update_result_file(learn_params, res)
     return res
+
+Hyperparameter = collections.namedtuple("Hyperparameter", "filters, kernel_size, padding, activation_function, strides, pool_size, lstm_units, dense_units, dense_activation_function, dropout_rate")
+
+def create_possible_hyperparameters():
+    """Returns all possible combinations of hyperparameters in the specified ranges."""
+    number_steps = 5
+
+    decays = create_sequence(0, 0.9, number_steps)
+
+    optimizer_builders = [SGD, Adam, RMSprop]
+    learning_rates = create_sequence(0.0001, 0.1, number_steps)
+
+    batch_sizes = create_sequence(16, 256, number_steps)
+    possible_epochs = create_sequence(1, 50, number_steps)
+    possible_nb_layers = [0,1,2,4,5,6] 
+    dropouts = create_sequence(0, 0.5, number_steps)
+    
+    activation_functions = ["sigmoid", "relu", "tanh"] 
+
+    cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
+        possible_epochs, dropouts, activation_functions)
+    hyperparameters = []
+    for hyperparameter_tuple in cartesian_prod_result:
+        hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
+
+    print("There are {0} possible hyperparameters\n\n".format(len(hyperparameters)))
+    return hyperparameters
+
+def get_dated_file_name(prefix):
+    now = datetime.datetime.utcnow()
+    return "{0}_d{1}_{2}h_{3}m".format(prefix, now.day, now.hour, now.minute)
+
+result_filename = get_dated_file_name("../results/result_file_CNN"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
+
+def update_result_file(learn_params, acc):
+    print("UPDATING RESULT FILE")
+    with open(result_filename, "w") as f:
+        f.write("accuracy_score\thyperparameters\n")
+        f.write("{0}\t{1}\n".format(acc, learn_params.__dict__))
 
 if __name__ == '__main__':
     np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
     datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
     data_info = DataInfo(*get_data_single(datadir))
     acc_score_value = run(data_info)
+
+    # np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
+    # datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
+    # hyperparameters = create_possible_hyperparameters()
+    # np.random.shuffle(hyperparameters)
+    # hyperparameter_to_score = {}
+    # dataInfo = DataInfo(*get_data_single(datadir))
+
+    # i = 0
+    #log_file_name = get_dated_file_name("../logs/log_train")
+    # with open(log_file_name, "a") as log_file:
+    #     for hyperparameter in hyperparameters:
+    #         print("\nusing this hyperparameter: "+ str(hyperparameter)+"\n")
+
+    #         accuracy_score_value = run(dataInfo, hyperparameter)
+    #         if accuracy_score_value == None:
+    #             print("=============DISCARDING MODEL============")
+    #             continue
+
+    #         result = {accuracy_score_value: hyperparameter}
+    #         log_file.write("accuracy score: {0}, hyperparameter: {1}\n".format(accuracy_score_value, hyperparameter))
+    #         hyperparameter_to_score.update(result)
+    #         update_result_file(i+1)
+
+    #         i+=1
