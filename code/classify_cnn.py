@@ -21,6 +21,7 @@ EPOCHS = 6
 
 LSTM_DIM_SIZE = 32
 NUM_CLASSES = 20
+NUM_DAYS = 10000
 #NUM_FEATURES = 2
 
 
@@ -121,7 +122,7 @@ def run(data_info):
     lstm_units = 128
     dense_units = NUM_CLASSES
     dense_activation_function = 'softmax'
-    dropout_rate = 0.25
+    dropout_rate = 0.1
     learn_params = LearnParams(filters, kernel_size, padding, activation_function, strides, pool_size, lstm_units, dense_units, dense_activation_function, dropout_rate)
 
     # Build the features and the data that we will use. We reshape them by adding a dimension of value 1 to be able to feed them to conv1D.
@@ -170,6 +171,6 @@ def run(data_info):
 
 if __name__ == '__main__':
     np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
-    datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_30/"
+    datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
     data_info = DataInfo(*get_data_single(datadir))
     acc_score_value = run(data_info)
