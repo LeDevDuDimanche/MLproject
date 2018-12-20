@@ -1,9 +1,10 @@
 import numpy as np
-import pdb
+import inspect 
 import collections
 import datetime
 import os
 import json
+from hyperopt import fmin, tpe, hp, Trials
 import itertools
 from create_closed_world import closed_world_foldername, create_closed_world
 from keras import metrics
@@ -17,9 +18,6 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
-NUM_CLASSES = 50
-NUM_DAYS = 10000
-BASELINE_SCORE = (1.0 / NUM_CLASSES) 
 NUM_FEATURES = 2
 
 
@@ -28,126 +26,35 @@ MAX_ASCENDING = 144.0
 # if you run find_max.py you'll see that the maximum packet size for ascending packets is 144
 # and for descending packets is 703. We're going to use that for doing feature scaling
 
+#truncation index is the length at which we discard the features inputs
+class Hyperparameter:
+	def __init__(self, nb_layers, decay, optimizer_builder, lr, batch_size, epochs, dropout, activation_function, nb_units):
+		self.nb_layers = long(nb_layers)
+		self.decay = decay
+		self.optimizer_builder = optimizer_builder
+		self.lr = lr
+		self.batch_size = long(batch_size)
+		self.epochs = long(epochs)
+		self.dropout = dropout
+		self.activation_function = activation_function
+		self.nb_units = long(nb_units)
+	def __str__(self):
+		return "nb_layers:  "+str(self.nb_layers) + ";  "+ "decay:  "+str(self.decay) + ";  "+ "optimizer_builder:  "+str(self.optimizer_builder) + ";  "+ "lr:  "+str(self.lr) + ";  "+ "batch_size:  "+str(self.batch_size) + ";  "+ "epochs:  "+str(self.epochs) + ";  "+ "dropout:  "+str(self.dropout) + ";  "+ "activation_function:  "+str(self.activation_function) + ";  "+ "nb_units:  "+str(self.nb_units)
 
+def create_search_space():
+	search_space = {
+		"nb_layers": hp.choice("nb_layers", [0,1,2,4,5,6]),
+		'decay': hp.uniform('decay', 0, 0.9),
+		'optimizer_builder': hp.choice('optimizer_builder', [SGD, Adam, RMSprop]),
+		"lr": hp.uniform("learning_rate", 0.0001, 0.1),
+		"batch_size": hp.uniform("batch_size", 16, 256),
+		"epochs": hp.uniform("epoch", 1, 50),
+		"dropout": hp.uniform("dropout", 0,0.5),
+		"activation_function": hp.choice("activation_function", ["sigmoid", "relu", "tanh"]),
+		"nb_units": hp.uniform("nb_units", 16, 128)
+	}
 
-def create_model_single(MAX_SEQ_LEN, hyperparameter):
-	LSTM_DIM_SIZE = hyperparameter.nb_units
-	model = Sequential()
-	model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
-
-	for i in range(hyperparameter.nb_layers):
-		model.add(LSTM(
-			units=LSTM_DIM_SIZE,
-			activation=hyperparameter.activation_function,
-			dropout=hyperparameter.dropout,
-			return_sequences=True
-		))
-	
-	model.add(LSTM(
-		units=LSTM_DIM_SIZE,
-		activation=hyperparameter.activation_function,
-		dropout=hyperparameter.dropout
-	))
-
-	model.add(Dense(NUM_CLASSES, activation="softmax"))
-
-	optimizer = hyperparameter.optimizer_builder(
-		lr= hyperparameter.lr, 
-		decay = hyperparameter.decay 
-	)
-
-
-	model.compile(loss='sparse_categorical_crossentropy',
-		optimizer=optimizer,
-		metrics=[metrics.sparse_categorical_accuracy])#,
-		#class_mode = 'binary')
-
-	return model
-
-
-def make_single_feature(slist, rlist, olist):
-	#https://en.wikipedia.org/wiki/Feature_scaling
-	def scale_feature(x):
-		return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
-
-	def scale_feature_divide_by_each_max(x):
-		x = np.float64(x)
-		return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
-
-	def alternate_received_and_sent():
-		newlist = []
-		def treat_element(x):
-			newlist.append(scale_feature_divide_by_each_max(x))
-
-		for item in olist[::-1]:
-			if item == 1:
-				treat_element(slist.pop())
-			else:
-				treat_element(rlist.pop() * -1)
-		return newlist[::-1]
-
-	def concat():
-		return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
-		#TODO in the paper say we tried concatenating the sent and the received it gives 10% less accuracy
-
-	return alternate_received_and_sent()
-
-
-
-def get_data_single(data_folder):
-	#list of list( (s1 -r1 -r2 s2 -r3 s3 s4 ...) )
-	
-	flist = os.listdir(data_folder)
-	features = []
-	labels = []
-	MAX_SEQ_LEN = 0
-	for fname in flist:
-		print(fname)
-		with open(data_folder + fname) as f:
-			data_dict = json.loads(f.read())
-			for k, v in data_dict.items():
-				new_list = make_single_feature(v['sent'], v['received'], v['order'])
-				# rec_list = v['received']
-				# if len(rec_list) > MAX_SEQ_LEN:
-				# 	MAX_SEQ_LEN = len(rec_list)
-				#features.append(rec_list) #Currently trying only with received lengths
-				if len(new_list) > MAX_SEQ_LEN:
-					MAX_SEQ_LEN = len(new_list)
-				features.append(new_list)
-				labels.append(int(k[:-5]))
-	features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
-	return np.array(features), np.array(labels), MAX_SEQ_LEN
-
-
-DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
-
-
-def find_mean_and_standard_derivation(xs):
-	as_single_list = np.reshape(xs, (-1))	
-	mean = np.mean(as_single_list)
-	standard_derivation = np.std(as_single_list)
-	return mean, standard_derivation
-
-def standardize(xs, mean, standard_derivation):	
-	return (xs - mean) / standard_derivation
-
-
-def single_feature(dataInfo, hyperparameter):
-	features, olabels, max_len = dataInfo
-
-	features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
-	X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
-	y_train = np.reshape(y_train, [len(y_train), 1])
-
-	model = create_model_single(max_len, hyperparameter)
-	print(model.summary())
-	fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, callbacks =[EarlyStopping(min_delta=0.03, patience=1) ],epochs=hyperparameter.epochs, validation_split= 0.05, shuffle= 'batch')
-
-	score = model.evaluate(X_test, y_test)
-
-	print("accuracy is", score[1])
-	return score[1]
-
+	return search_space
 
 def create_sequence(min_val, max_val, number_steps):
 	i = 0
@@ -158,8 +65,7 @@ def create_sequence(min_val, max_val, number_steps):
 		i+=1 
 	return sequence
 
-#truncation index is the length at which we discard the features inputs
-Hyperparameter = collections.namedtuple("Hyperparameter", "nb_layers decay optimizer_builder lr batch_size epochs dropout activation_function nb_units")
+
 
 def create_possible_hyperparameters():
 	number_steps = 5
@@ -188,7 +94,145 @@ def create_possible_hyperparameters():
 	return hyperparameters
 	
 	
-if __name__ == '__main__':
+
+
+
+def classify_LSTM(NUM_CLASSES, NUM_DAYS):
+
+	def create_model_single(MAX_SEQ_LEN, hyperparameter):
+		LSTM_DIM_SIZE = long(hyperparameter.nb_units)
+		model = Sequential()
+		model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
+
+		for i in range(long(hyperparameter.nb_layers)):
+			try:
+				model.add(LSTM(
+					units=LSTM_DIM_SIZE,
+					activation=hyperparameter.activation_function,
+					dropout=hyperparameter.dropout,
+					return_sequences=True
+				))
+			except Exception:
+				pdb.set_trace()
+				
+			
+			
+		
+		model.add(LSTM(
+			units=LSTM_DIM_SIZE,
+			activation=hyperparameter.activation_function,
+			dropout=hyperparameter.dropout
+		))
+
+		model.add(Dense(NUM_CLASSES, activation="softmax"))
+
+		optimizer = hyperparameter.optimizer_builder(
+			lr= hyperparameter.lr, 
+			decay = hyperparameter.decay 
+		)
+
+
+		model.compile(loss='sparse_categorical_crossentropy',
+			optimizer=optimizer,
+			metrics=[metrics.sparse_categorical_accuracy])#,
+			#class_mode = 'binary')
+
+		return model
+
+
+	def make_single_feature(slist, rlist, olist):
+		#https://en.wikipedia.org/wiki/Feature_scaling
+		def scale_feature(x):
+			return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
+
+		def scale_feature_divide_by_each_max(x):
+			x = np.float64(x)
+			return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
+
+		def alternate_received_and_sent():
+			newlist = []
+			def treat_element(x):
+				newlist.append(scale_feature_divide_by_each_max(x))
+
+			for item in olist[::-1]:
+				if item == 1:
+					treat_element(slist.pop())
+				else:
+					treat_element(rlist.pop() * -1)
+			return newlist[::-1]
+
+		def concat():
+			return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
+			#TODO in the paper say we tried concatenating the sent and the received it gives 10% less accuracy
+
+		return alternate_received_and_sent()
+
+
+
+	def get_data_single(data_folder):
+		#list of list( (s1 -r1 -r2 s2 -r3 s3 s4 ...) )
+		
+		flist = os.listdir(data_folder)
+		features = []
+		labels = []
+		MAX_SEQ_LEN = 0
+		for fname in flist:
+			print(fname)
+			with open(data_folder + fname) as f:
+				data_dict = json.loads(f.read())
+				for k, v in data_dict.items():
+					new_list = make_single_feature(v['sent'], v['received'], v['order'])
+					# rec_list = v['received']
+					# if len(rec_list) > MAX_SEQ_LEN:
+					# 	MAX_SEQ_LEN = len(rec_list)
+					#features.append(rec_list) #Currently trying only with received lengths
+					if len(new_list) > MAX_SEQ_LEN:
+						MAX_SEQ_LEN = len(new_list)
+					features.append(new_list)
+					labels.append(int(k[:-5]))
+		features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
+		return np.array(features), np.array(labels), MAX_SEQ_LEN
+
+
+	DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
+
+
+	def find_mean_and_standard_derivation(xs):
+		as_single_list = np.reshape(xs, (-1))	
+		mean = np.mean(as_single_list)
+		standard_derivation = np.std(as_single_list)
+		return mean, standard_derivation
+
+	def standardize(xs, mean, standard_derivation):	
+		return (xs - mean) / standard_derivation
+
+
+	def single_feature(dataInfo, result_file_updater, params):
+		args = []
+		fields = inspect.getargspec(Hyperparameter.__init__).args[1:]
+		for field in fields:
+			args.append(params.get(field))
+		hyperparameter = Hyperparameter(*args)
+			
+		features, olabels, max_len = dataInfo
+		
+
+		features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
+		X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
+		y_train = np.reshape(y_train, [len(y_train), 1])
+
+
+		model = create_model_single(max_len, hyperparameter)
+		print(model.summary())
+		fit_return = model.fit(X_train, y_train, batch_size=long(hyperparameter.batch_size), callbacks =[EarlyStopping(min_delta=0.03, patience=1) ],epochs=long(hyperparameter.epochs), validation_split= 0.05, shuffle= 'batch')
+
+		score = model.evaluate(X_test, y_test)
+
+		print("accuracy is", score[1])
+		result_file_updater(hyperparameter, score[1])
+		return score[1]
+
+
 
 	# urls = []
 	# url_file = "short_list_500"
@@ -199,14 +243,10 @@ if __name__ == '__main__':
 	
 	np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
 
-	DELTATIME_FIRST_COLLECTION_DAY = 30
-	datadir = closed_world_foldername(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY)
+	datadir = closed_world_foldername(NUM_CLASSES, NUM_DAYS)
 	if not os.path.isdir(datadir):
-		create_closed_world(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY)	
-	hyperparameters = create_possible_hyperparameters()
-	np.random.shuffle(hyperparameters)
-	hyperparameter_to_score = {}
-	dataInfo = DataInfo(*get_data_single(datadir))
+		create_closed_world(NUM_CLASSES, NUM_DAYS)	
+
 
 	def get_dated_file_name(prefix):
 		now = datetime.datetime.utcnow()
@@ -222,31 +262,43 @@ if __name__ == '__main__':
 	for d in [LOGS_DIR, RESULTS_DIR]:
 		create_if_not_exists(d)
 
+	dataInfo = DataInfo(*get_data_single(datadir))
+
+
+
+        for d in [LOGS_DIR, RESULTS_DIR]:
+                create_if_not_exists(d)
+ 
 	result_filename = get_dated_file_name("../results/result_file_LSTM"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
 	log_file_name = get_dated_file_name(os.path.join(LOGS_DIR, "log_train"))
 	result_filename = get_dated_file_name(os.path.join(RESULTS_DIR, result_filename))
-	def update_result_file(nb_tried):
+
+	nb_tried = {"nb_tried": 0}
+	score_to_hyperparam = {}
+	def update_result_file(hyperparameter, accuracy):
+		score_to_hyperparam.update({accuracy: hyperparameter})
 		print("UPDATING RESULT FILE")
-		sorted_keys = sorted(hyperparameter_to_score, reverse=True)
+		sorted_keys = sorted(score_to_hyperparam, reverse=True)
+		nb = nb_tried.get("nb_tried")
 		with open(result_filename, "w") as f:
-			lines = """Model with {0} classes, inteval of days [0, {1}]\ntried the first {2} hyperparameters\naccuracy_score\thyperparameter\n""".format(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY, nb_tried)
-			for key in sorted_keys: 
-				lines += "{0}\t{1}\n".format(key, hyperparameter_to_score.get(key))
+			lines = """Model with {0} classes, interval of days [0, {1}]\ntried the first {2} hyperparameters\naccuracy_score\thyperparameter\n""".format(NUM_CLASSES, NUM_DAYS, nb)
+			for hyperparam in sorted_keys: 
+				lines += "{0}\t{1}\n".format(hyperparam, score_to_hyperparam.get(hyperparam))
 			f.write(lines)
+			nb_tried.update({"nb_tried": nb+1})
 
-	i = 0
-	with open(log_file_name, "a") as log_file:
-		for hyperparameter in hyperparameters:
-			print("\nusing this hyperparameter: "+ str(hyperparameter)+"\n")
 
-			accuracy_score_value = single_feature(dataInfo, hyperparameter)
-			if accuracy_score_value == None:
-				print("=============DISCARDING MODEL============")
-				continue
 
-			result = {accuracy_score_value: hyperparameter}
-			log_file.write("accuracy score: {0}, hyperparameter: {1}\n".format(accuracy_score_value, hyperparameter))
-			hyperparameter_to_score.update(result)
-			update_result_file(i+1)
 
-			i+=1
+	trials_obj = Trials()
+	best = fmin(fn=(lambda params: -1 * single_feature(dataInfo, update_result_file, params)), 
+		space=create_search_space(), 
+		algo=tpe.suggest, 
+		max_evals=100, 
+		trials=trials_obj)
+	print(best)
+
+if __name__ == '__main__':
+	num_classes = 50
+	num_days = 10000
+	classify_LSTM(num_classes, num_days)
