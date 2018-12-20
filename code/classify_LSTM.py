@@ -1,7 +1,6 @@
 import numpy as np
 import inspect 
 import collections
-from guppy import hpy;
 import datetime
 import os
 import json
@@ -60,41 +59,6 @@ def create_search_space():
 	return search_space
 
 
-def create_model_single(MAX_SEQ_LEN, hyperparameter):
-    LSTM_DIM_SIZE = hyperparameter.nb_units
-    model = Sequential()
-    model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
-
-    for i in range(hyperparameter.nb_layers):
-        model.add(LSTM(
-            units=LSTM_DIM_SIZE,
-            activation=hyperparameter.activation_function,
-            dropout=hyperparameter.dropout,
-            return_sequences=True
-        ))
-    
-    model.add(LSTM(
-        units=LSTM_DIM_SIZE,
-        activation=hyperparameter.activation_function,
-        dropout=hyperparameter.dropout
-    ))
-
-    model.add(Dense(NUM_CLASSES, activation="softmax"))
-
-    optimizer = hyperparameter.optimizer_builder(
-        lr= hyperparameter.lr, 
-        decay = hyperparameter.decay 
-    )
-
-
-    model.compile(loss='sparse_categorical_crossentropy',
-        optimizer=optimizer,
-        metrics=[metrics.sparse_categorical_accuracy])#,
-        #class_mode = 'binary')
-
-    return model
-
-
 def make_single_feature(slist, rlist, olist):
     #https://en.wikipedia.org/wiki/Feature_scaling
     def scale_feature(x):
@@ -123,50 +87,6 @@ def make_single_feature(slist, rlist, olist):
     return alternate_received_and_sent()
 
 def build_burst_feature(data_folder):
-    """Build a second feature consisting of the packet length sequences split in bursts."""
-    flist = os.listdir(data_folder)
-    features = []
-    burst_features = []
-    labels = []
-    MAX_SEQ_LEN = 0
-    for fname in flist:
-        print(fname)
-        with open(data_folder + fname) as f:
-            data_dict = json.loads(f.read())
-            for k, v in data_dict.items():
-                new_list = make_single_feature(v['sent'], v['received'], v['order'])
-                if len(new_list) > MAX_SEQ_LEN:
-                    MAX_SEQ_LEN = len(new_list)
-                features.append(new_list)
-                labels.append(int(k[:-5]))
-    #features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
-    #burst_features = get_bursts(features)
-
-    # Transform the feature vector in a vector of bursts
-    #MAX_SEQ_LEN = 0
-    for f in features:
-        new_burst = ngrams_bursts(np.asarray(f))
-        if len(new_burst) > MAX_SEQ_LEN:
-            MAX_SEQ_LEN = len(new_burst)
-        burst_features.append(new_burst)
-
-    # Pad the result to have uniformly shaped inputs
-    burst_features = pad_sequences(burst_features, dtype="float64", maxlen=MAX_SEQ_LEN)
-    
-    # Scale the bursts sequence between -1 and 1
-    # burst_features = np.array(burst_features)
-    # max_burst = np.max(burst_features)
-    # min_burst = np.min(burst_features)
-    # burst_features = np.float64(burst_features)
-    # for b_f in burst_features:
-    #     for elem in b_f:
-    #         elem = elem / max_burst if elem > 0 else elem / min_burst
-
-    print('Features shape: {}\t Bursts shape: {}'.format(np.array(features).shape, np.array(burst_features).shape))
-
-    return np.array(burst_features), np.array(labels), MAX_SEQ_LEN
-
-	def build_burst_feature(data_folder):
     """Build a second feature consisting of the packet length sequences split in bursts."""
     flist = os.listdir(data_folder)
     features = []
@@ -248,175 +168,10 @@ def find_mean_and_standard_derivation(xs):
 
 def standardize(xs, mean, standard_derivation):    
     return (xs - mean) / standard_derivation
-
-
-def single_feature(dataInfo, hyperparameter):
-    features, olabels, max_len = dataInfo
-
-    features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
-    X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
-    y_train = np.reshape(y_train, [len(y_train), 1])
-
-    model = create_model_single(max_len, hyperparameter)
-    print(model.summary())
-    fit_return = model.fit(X_train, y_train, batch_size=hyperparameter.batch_size, callbacks =[EarlyStopping(min_delta=0.03, patience=1) ],epochs=hyperparameter.epochs, validation_split= 0.05, shuffle= 'batch')
-
-    score = model.evaluate(X_test, y_test)
-
-    print("accuracy is", score[1])
-    return score[1]
-
-
-def create_sequence(min_val, max_val, number_steps):
-    i = 0
-    sequence = []
-    step_size = (max_val - min_val) / number_steps
-    while i < number_steps:
-        sequence.append(min_val + step_size * i)
-        i+=1 
-    return sequence
-
-
-
-def create_possible_hyperparameters():
-	number_steps = 5
-
-	decays = create_sequence(0, 0.9, number_steps)
-
-	nb_units = create_sequence(16, 128, number_steps)
-	optimizer_builders = [SGD, Adam, RMSprop]
-	learning_rates = create_sequence(0.0001, 0.1, number_steps)
-
-	batch_sizes = create_sequence(16, 256, number_steps)	
-	possible_epochs = create_sequence(1, 50, number_steps)
-	possible_nb_layers = [0,1,2,4,5,6] 
-	dropouts = create_sequence(0, 0.5, number_steps)
 	
-	activation_functions = ["sigmoid", "relu", "tanh"] 
-
-	
-	cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
-		possible_epochs, dropouts, activation_functions, nb_units)
-	hyperparameters = []
-	for hyperparameter_tuple in cartesian_prod_result:
-		hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
-
-	print("There are {0} possible hyperparameters\n\n".format(len(hyperparameters)))
-	return hyperparameters
-	
-	
-
 
 
 def classify_LSTM(NUM_CLASSES, NUM_DAYS):
-
-	def create_model_single(MAX_SEQ_LEN, hyperparameter):
-		LSTM_DIM_SIZE = long(hyperparameter.nb_units)
-		model = Sequential()
-		model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
-
-		for i in range(long(hyperparameter.nb_layers)):
-			try:
-				model.add(LSTM(
-					units=LSTM_DIM_SIZE,
-					activation=hyperparameter.activation_function,
-					dropout=hyperparameter.dropout,
-					return_sequences=True
-				))
-			except Exception:
-				pdb.set_trace()
-				
-			
-			
-		
-		model.add(LSTM(
-			units=LSTM_DIM_SIZE,
-			activation=hyperparameter.activation_function,
-			dropout=hyperparameter.dropout
-		))
-
-		model.add(Dense(NUM_CLASSES, activation="softmax"))
-
-		optimizer = hyperparameter.optimizer_builder(
-			lr= hyperparameter.lr, 
-			decay = hyperparameter.decay 
-		)
-
-
-		model.compile(loss='sparse_categorical_crossentropy',
-			optimizer=optimizer,
-			metrics=[metrics.sparse_categorical_accuracy])#,
-			#class_mode = 'binary')
-
-		return model
-
-
-	def make_single_feature(slist, rlist, olist):
-		#https://en.wikipedia.org/wiki/Feature_scaling
-		def scale_feature(x):
-			return (np.float64(x) + MAX_DESCENDING) / (MAX_DESCENDING + MAX_ASCENDING)
-
-		def scale_feature_divide_by_each_max(x):
-			x = np.float64(x)
-			return x / MAX_ASCENDING if x > 0 else x / MAX_DESCENDING
-
-		def alternate_received_and_sent():
-			newlist = []
-			def treat_element(x):
-				newlist.append(scale_feature_divide_by_each_max(x))
-
-			for item in olist[::-1]:
-				if item == 1:
-					treat_element(slist.pop())
-				else:
-					treat_element(rlist.pop() * -1)
-			return newlist[::-1]
-
-		def concat():
-			return np.concatenate((np.array(slist_param)*-1, np.array(rlist_param)))
-			#TODO in the paper say we tried concatenating the sent and the received it gives 10% less accuracy
-
-		return alternate_received_and_sent()
-
-
-
-	def get_data_single(data_folder):
-		#list of list( (s1 -r1 -r2 s2 -r3 s3 s4 ...) )
-		
-		flist = os.listdir(data_folder)
-		features = []
-		labels = []
-		MAX_SEQ_LEN = 0
-		for fname in flist:
-			print(fname)
-			with open(data_folder + fname) as f:
-				data_dict = json.loads(f.read())
-				for k, v in data_dict.items():
-					new_list = make_single_feature(v['sent'], v['received'], v['order'])
-					# rec_list = v['received']
-					# if len(rec_list) > MAX_SEQ_LEN:
-					# 	MAX_SEQ_LEN = len(rec_list)
-					#features.append(rec_list) #Currently trying only with received lengths
-					if len(new_list) > MAX_SEQ_LEN:
-						MAX_SEQ_LEN = len(new_list)
-					features.append(new_list)
-					labels.append(int(k[:-5]))
-		features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
-		return np.array(features), np.array(labels), MAX_SEQ_LEN
-
-
-	DataInfo = collections.namedtuple("DataInfo", "features labels max_len")
-
-
-	def find_mean_and_standard_derivation(xs):
-		as_single_list = np.reshape(xs, (-1))	
-		mean = np.mean(as_single_list)
-		standard_derivation = np.std(as_single_list)
-		return mean, standard_derivation
-
-	def standardize(xs, mean, standard_derivation):	
-		return (xs - mean) / standard_derivation
-
 
 	def single_feature(dataInfo, result_file_updater, params):
 		args = []
@@ -427,8 +182,6 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS):
 			
 		features, olabels, max_len = dataInfo
 		
-		h=hpy()
-		print(h.heap())
 
 		features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 		X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
@@ -444,6 +197,47 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS):
 		print("accuracy is", score[1])
 		result_file_updater(hyperparameter, score[1])
 		return score[1]
+
+	
+	def create_model_single(MAX_SEQ_LEN, hyperparameter):
+			LSTM_DIM_SIZE = long(hyperparameter.nb_units)
+			model = Sequential()
+			model.add(Reshape((1, MAX_SEQ_LEN), input_shape=(MAX_SEQ_LEN,1)))
+
+			for i in range(long(hyperparameter.nb_layers)):
+				try:
+					model.add(LSTM(
+						units=LSTM_DIM_SIZE,
+						activation=hyperparameter.activation_function,
+						dropout=hyperparameter.dropout,
+						return_sequences=True
+					))
+				except Exception:
+					pdb.set_trace()
+					
+				
+				
+			
+			model.add(LSTM(
+				units=LSTM_DIM_SIZE,
+				activation=hyperparameter.activation_function,
+				dropout=hyperparameter.dropout
+			))
+
+			model.add(Dense(NUM_CLASSES, activation="softmax"))
+
+			optimizer = hyperparameter.optimizer_builder(
+				lr= hyperparameter.lr, 
+				decay = hyperparameter.decay 
+			)
+
+
+			model.compile(loss='sparse_categorical_crossentropy',
+				optimizer=optimizer,
+				metrics=[metrics.sparse_categorical_accuracy])#,
+				#class_mode = 'binary')
+
+			return model
 
 
 
