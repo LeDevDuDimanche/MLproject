@@ -22,7 +22,7 @@ BATCH_SIZE = 16
 EPOCHS = 6
 
 LSTM_DIM_SIZE = 32
-NUM_CLASSES = 20
+NUM_CLASSES = 100
 NUM_DAYS = 10000
 #NUM_FEATURES = 2
 
@@ -114,6 +114,22 @@ def build_linear_model(max_length):
 
 #     return burst_list
 
+def make_single_feature_no_scaling(slist, rlist, olist):
+    #https://en.wikipedia.org/wiki/Feature_scaling
+    def alternate_received_and_sent():
+        newlist = []
+        def treat_element(x):
+            newlist.append(x)
+
+        for item in olist[::-1]:
+            if item == 1:
+                treat_element(slist.pop())
+            else:
+                treat_element(rlist.pop() * -1)
+        return newlist[::-1]
+
+    return alternate_received_and_sent()
+
 def build_burst_feature(data_folder):
     """Build a second feature consisting of the packet length sequences split in bursts."""
     flist = os.listdir(data_folder)
@@ -135,14 +151,24 @@ def build_burst_feature(data_folder):
     #burst_features = get_bursts(features)
 
     # Transform the feature vector in a vector of bursts
-    MAX_SEQ_LEN = 0
+    #MAX_SEQ_LEN = 0
     for f in features:
         new_burst = ngrams_bursts(np.asarray(f))
         if len(new_burst) > MAX_SEQ_LEN:
             MAX_SEQ_LEN = len(new_burst)
         burst_features.append(new_burst)
 
+    # Pad the result to have uniformly shaped inputs
     burst_features = pad_sequences(burst_features, dtype="float64", maxlen=MAX_SEQ_LEN)
+    
+    # Scale the bursts sequence between -1 and 1
+    # burst_features = np.array(burst_features)
+    # max_burst = np.max(burst_features)
+    # min_burst = np.min(burst_features)
+    # burst_features = np.float64(burst_features)
+    # for b_f in burst_features:
+    #     for elem in b_f:
+    #         elem = elem / max_burst if elem > 0 else elem / min_burst
 
     print('Features shape: {}\t Bursts shape: {}'.format(np.array(features).shape, np.array(burst_features).shape))
 
