@@ -27,7 +27,6 @@ MAX_ASCENDING = 144.0
 # if you run find_max.py you'll see that the maximum packet size for ascending packets is 144
 # and for descending packets is 703. We're going to use that for doing feature scaling
 
-<<<<<<< HEAD
 #truncation index is the length at which we discard the features inputs
 class Hyperparameter:
 	def __init__(self, nb_layers, decay, optimizer_builder, lr, batch_size, epochs, dropout, activation_function, nb_units):
@@ -57,7 +56,6 @@ def create_search_space():
 	}
 
 	return search_space
-=======
 
 
 def create_model_single(MAX_SEQ_LEN, hyperparameter):
@@ -222,7 +220,6 @@ def single_feature(dataInfo, hyperparameter):
 	print("accuracy is", score[1])
 	return score[1]
 
->>>>>>> Added build burst features
 
 def create_sequence(min_val, max_val, number_steps):
 	i = 0
