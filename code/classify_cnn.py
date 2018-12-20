@@ -4,7 +4,8 @@ import os
 import json
 import itertools
 import datetime
-from classify_LSTM import DataInfo, get_data_single, create_sequence
+from classify_LSTM import DataInfo, get_data_single, create_sequence, make_single_feature
+from utils.util import get_bursts, ngrams_bursts
 from keras import metrics
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential, Model
@@ -42,13 +43,13 @@ class LearnParams:
         self.dense_activation_function = dense_activation_function
         self.dropout_rate = dropout_rate
 
-def build_model(learn_params, max_length):
+def build_model(learn_params, input_shape):
     """Build a CNN model using Keras"""
     model = Sequential()
     #model.add(Reshape((1, max_length)))
     
     # Build first layer
-    model.add(Dropout(input_shape = (max_length, 1), rate = learn_params.dropout_rate))
+    model.add(Dropout(input_shape = input_shape, rate = learn_params.dropout_rate))
 
     # Build the rest of the layers
     model.add(Conv1D(
@@ -104,13 +105,50 @@ def build_linear_model(max_length):
     return model
 
 
-def build_single_feature():
-    pass
+# def build_single_feature(data_folder):
+#     pass
 
-def build_burst_feature():
-    pass
+# def build_burst_feature(olist):
+#     burst_list = []
+#     for 
 
-def run(data_info):
+#     return burst_list
+
+def build_burst_feature(data_folder):
+    """Build a second feature consisting of the packet length sequences split in bursts."""
+    flist = os.listdir(data_folder)
+    features = []
+    burst_features = []
+    labels = []
+    MAX_SEQ_LEN = 0
+    for fname in flist:
+        print(fname)
+        with open(data_folder + fname) as f:
+            data_dict = json.loads(f.read())
+            for k, v in data_dict.items():
+                new_list = make_single_feature(v['sent'], v['received'], v['order'])
+                if len(new_list) > MAX_SEQ_LEN:
+                    MAX_SEQ_LEN = len(new_list)
+                features.append(new_list)
+                labels.append(int(k[:-5]))
+    #features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
+    #burst_features = get_bursts(features)
+
+    # Transform the feature vector in a vector of bursts
+    MAX_SEQ_LEN = 0
+    for f in features:
+        new_burst = ngrams_bursts(np.asarray(f))
+        if len(new_burst) > MAX_SEQ_LEN:
+            MAX_SEQ_LEN = len(new_burst)
+        burst_features.append(new_burst)
+
+    burst_features = pad_sequences(burst_features, dtype="float64", maxlen=MAX_SEQ_LEN)
+
+    print('Features shape: {}\t Bursts shape: {}'.format(np.array(features).shape, np.array(burst_features).shape))
+
+    return np.array(burst_features), np.array(labels), MAX_SEQ_LEN
+
+def run(data_info, burst):
     """Perform a normal run by creating a model, then training it and evaluating the results."""
 
     # Define all parameters used for the current run
@@ -140,10 +178,12 @@ def run(data_info):
     print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
 
     # Build the model using the params
-    model = build_model(learn_params, max_len)
-    #model = build_linear_model(max_len) #linear model for testing
-
-
+    if burst:
+        input_shape = (max_len, 1)
+        model = build_model(learn_params, input_shape)
+    else:
+        input_shape = (max_len, 1)
+        model = build_model(learn_params, input_shape)
 
     # Define the metrics and optimizer used to compile the model
     #metrics = ['accuracy']
@@ -171,32 +211,32 @@ def run(data_info):
     update_result_file(learn_params, res)
     return res
 
-Hyperparameter = collections.namedtuple("Hyperparameter", "filters, kernel_size, padding, activation_function, strides, pool_size, lstm_units, dense_units, dense_activation_function, dropout_rate")
+# Hyperparameter = collections.namedtuple("Hyperparameter", "filters, kernel_size, padding, activation_function, strides, pool_size, lstm_units, dense_units, dense_activation_function, dropout_rate")
 
-def create_possible_hyperparameters():
-    """Returns all possible combinations of hyperparameters in the specified ranges."""
-    number_steps = 5
+# def create_possible_hyperparameters():
+#     """Returns all possible combinations of hyperparameters in the specified ranges."""
+#     number_steps = 5
 
-    decays = create_sequence(0, 0.9, number_steps)
+#     decays = create_sequence(0, 0.9, number_steps)
 
-    optimizer_builders = [SGD, Adam, RMSprop]
-    learning_rates = create_sequence(0.0001, 0.1, number_steps)
+#     optimizer_builders = [SGD, Adam, RMSprop]
+#     learning_rates = create_sequence(0.0001, 0.1, number_steps)
 
-    batch_sizes = create_sequence(16, 256, number_steps)
-    possible_epochs = create_sequence(1, 50, number_steps)
-    possible_nb_layers = [0,1,2,4,5,6] 
-    dropouts = create_sequence(0, 0.5, number_steps)
+#     batch_sizes = create_sequence(16, 256, number_steps)
+#     possible_epochs = create_sequence(1, 50, number_steps)
+#     possible_nb_layers = [0,1,2,4,5,6] 
+#     dropouts = create_sequence(0, 0.5, number_steps)
     
-    activation_functions = ["sigmoid", "relu", "tanh"] 
+#     activation_functions = ["sigmoid", "relu", "tanh"] 
 
-    cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
-        possible_epochs, dropouts, activation_functions)
-    hyperparameters = []
-    for hyperparameter_tuple in cartesian_prod_result:
-        hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
+#     cartesian_prod_result = itertools.product(possible_nb_layers, decays, optimizer_builders, learning_rates, batch_sizes, 
+#         possible_epochs, dropouts, activation_functions)
+#     hyperparameters = []
+#     for hyperparameter_tuple in cartesian_prod_result:
+#         hyperparameters.append(Hyperparameter(*hyperparameter_tuple))
 
-    print("There are {0} possible hyperparameters\n\n".format(len(hyperparameters)))
-    return hyperparameters
+#     print("There are {0} possible hyperparameters\n\n".format(len(hyperparameters)))
+#     return hyperparameters
 
 def get_dated_file_name(prefix):
     now = datetime.datetime.utcnow()
@@ -213,8 +253,13 @@ def update_result_file(learn_params, acc):
 if __name__ == '__main__':
     np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
     datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
-    data_info = DataInfo(*get_data_single(datadir))
-    acc_score_value = run(data_info)
+    burst = True
+    if burst:
+        data_info = DataInfo(*build_burst_feature(datadir))
+        burst_features, _, _ = data_info
+    else:
+        data_info = DataInfo(*get_data_single(datadir))
+    acc_score_value = run(data_info, burst)
 
     # np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
     # datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
