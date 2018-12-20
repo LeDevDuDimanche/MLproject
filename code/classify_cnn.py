@@ -4,7 +4,7 @@ import os
 import json
 import itertools
 import datetime
-from classify_LSTM import DataInfo, get_data_single, create_sequence, make_single_feature
+from classify_LSTM import DataInfo, get_data_single, make_single_feature
 from utils.util import get_bursts, ngrams_bursts
 from keras import metrics
 from keras.callbacks import EarlyStopping
