@@ -170,15 +170,18 @@ def standardize(xs, mean, standard_derivation):
     return (xs - mean) / standard_derivation
 	
 
-
-def classify_LSTM(NUM_CLASSES, NUM_DAYS):
+#This method uses hyperopt
+def classify_LSTM(NUM_CLASSES, NUM_DAYS, specific_hyperparameter=None):
 
 	def single_feature(dataInfo, result_file_updater, params):
-		args = []
-		fields = inspect.getargspec(Hyperparameter.__init__).args[1:]
-		for field in fields:
-			args.append(params.get(field))
-		hyperparameter = Hyperparameter(*args)
+		if isinstance(params, Hyperparameter):
+			hyperparameter = params
+		else:
+			args = []
+			fields = inspect.getargspec(Hyperparameter.__init__).args[1:]
+			for field in fields:
+				args.append(params.get(field))
+			hyperparameter = Hyperparameter(*args)
 			
 		features, olabels, max_len = dataInfo
 		
@@ -272,11 +275,10 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS):
 	dataInfo = DataInfo(*get_data_single(datadir))
 
 
-
-        for d in [LOGS_DIR, RESULTS_DIR]:
-                create_if_not_exists(d)
+	for d in [LOGS_DIR, RESULTS_DIR]:
+		create_if_not_exists(d)
  
-	result_filename = get_dated_file_name("../results/result_file_LSTM"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
+	result_filename = get_dated_file_name("result_file_LSTM"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
 	log_file_name = get_dated_file_name(os.path.join(LOGS_DIR, "log_train"))
 	result_filename = get_dated_file_name(os.path.join(RESULTS_DIR, result_filename))
 
@@ -295,17 +297,30 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS):
 			nb_tried.update({"nb_tried": nb+1})
 
 
-
-
-	trials_obj = Trials()
-	best = fmin(fn=(lambda params: -1 * single_feature(dataInfo, update_result_file, params)), 
-		space=create_search_space(), 
-		algo=tpe.suggest, 
-		max_evals=100, 
-		trials=trials_obj)
-	print(best)
+	if specific_hyperparameter == None: 
+		trials_obj = Trials()
+		best = fmin(fn=(lambda params: -1 * single_feature(dataInfo, update_result_file, params)), 
+			space=create_search_space(), 
+			algo=tpe.suggest, 
+			max_evals=100, 
+			trials=trials_obj)
+		print(best)
+	else: 
+		 single_feature(dataInfo, update_result_file, specific_hyperparameter)
 
 if __name__ == '__main__':
-	num_classes = 50
+	num_classes = 20
 	num_days = 10000
+	#you can add a last parameter of type Hyperparameter to classify_LSTM
+	# if you don't want to train the LSTM
+	#but rather use a specific hyperparameter
+
+	#best hyperparameter for closed world 20 with 10000 number of days
+	hyperparameter20 = Hyperparameter(0, 0.00115089277682, 
+		RMSprop, 0.0366748726187, 150, 22, 0.323686970012, "tanh", 126) 
+
+	
+
+	hyperparameter50
 	classify_LSTM(num_classes, num_days)
+
