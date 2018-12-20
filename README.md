@@ -19,6 +19,14 @@ Code for CS433 Project 2
   
 ###How to run
 
+- Run everything with Python 2 as we developed with this version (2.7) and cannot guarantee compilation with Python 3.0 or above.
+
+- Install the following dependencies :
+	-numpy 1.15.4
+	-sklearn 0.0
+	-keras 2.2.4
+	-tensorflow 1.12
+
 - Run the create_closed_world script in the /code/ directory. It will create a data directory with the filtered json files. You can modify the number of categories in the closed world as well as the number of days to filter. Default is 20, 10 000 (the whole time period)
 
 - Create a 'results' and a 'logs' directories at the same level as data/ and code/. The NN scripts will save the accuracies and hyperparameters there.
