@@ -12,6 +12,23 @@ from multiprocessing import cpu_count
 from joblib import Parallel, delayed
 from functools import partial
 
+def update_dictionnary(d, u, v):
+	nb_traces = d.get(u)
+	if nb_traces == None:
+		nb_traces = 0
+	d.update({u: nb_traces + 1}) 
+	
+	
+
+#computes the number of traces per website in a given directory for each website
+def number_traces_per_website(data_folder):
+	website_to_nb_traces = {}	
+	foreach_pcap_in_data_folder(data_folder, lambda u, v: update_dictionnary(website_to_nb_traces, u, v))
+	nb_traces_to_website = sorted(list(map(lambda t: (t[1], t[0]), list(website_to_nb_traces.items()))))
+	minimum = nb_traces_to_website[0]
+	maximum = nb_traces_to_website[-1]
+	print("max : name {0} number traces {1} \t min name {2} number traces {3}".format(maximum[1], maximum[0], minimum[1], minimum[0]))
+	
 
 def foreach_pcap_in_data_folder(data_folder, function_to_apply):
 	flist = os.listdir(data_folder)

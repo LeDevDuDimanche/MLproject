@@ -5,6 +5,7 @@ import datetime
 import os
 import json
 import itertools
+from create_closed_world import closed_world_foldername, create_closed_world
 from keras import metrics
 from keras.callbacks import EarlyStopping 
 from keras.models import Sequential, Model
@@ -197,7 +198,11 @@ if __name__ == '__main__':
 	# 		urls.append(line.strip())
 	
 	np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
-	datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
+
+	DELTATIME_FIRST_COLLECTION_DAY = 30
+	datadir = closed_world_foldername(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY)
+	if not os.path.isdir(datadir):
+		create_closed_world(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY)	
 	hyperparameters = create_possible_hyperparameters()
 	np.random.shuffle(hyperparameters)
 	hyperparameter_to_score = {}
@@ -207,18 +212,27 @@ if __name__ == '__main__':
 		now = datetime.datetime.utcnow()
 		return "{0}_d{1}_{2}h_{3}m".format(prefix, now.day, now.hour, now.minute)
 
-	log_file_name = get_dated_file_name("../logs/log_train")
 
+	LOGS_DIR = "../logs/"
+	RESULTS_DIR = "../results/"
+	def create_if_not_exists(direc):
+		if not os.path.isdir(direc):
+			os.makedirs(direc)
+			
+	for d in [LOGS_DIR, RESULTS_DIR]:
+		create_if_not_exists(d)
 
 	result_filename = get_dated_file_name("../results/result_file_LSTM"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
+	log_file_name = get_dated_file_name(os.path.join(LOGS_DIR, "log_train"))
+	result_filename = get_dated_file_name(os.path.join(RESULTS_DIR, result_filename))
 	def update_result_file(nb_tried):
 		print("UPDATING RESULT FILE")
 		sorted_keys = sorted(hyperparameter_to_score, reverse=True)
 		with open(result_filename, "w") as f:
-			f.write("tried the first {0} hyperparameters\n".format(nb_tried))
-			f.write("accuracy_score\thyperparameter\n")
+			lines = """Model with {0} classes, inteval of days [0, {1}]\ntried the first {2} hyperparameters\naccuracy_score\thyperparameter\n""".format(NUM_CLASSES, DELTATIME_FIRST_COLLECTION_DAY, nb_tried)
 			for key in sorted_keys: 
-				f.write("{0}\t{1}\n".format(key, hyperparameter_to_score.get(key)))
+				lines += "{0}\t{1}\n".format(key, hyperparameter_to_score.get(key))
+			f.write(lines)
 
 	i = 0
 	with open(log_file_name, "a") as log_file:
