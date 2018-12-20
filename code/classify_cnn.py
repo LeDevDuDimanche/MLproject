@@ -20,6 +20,7 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 
 BATCH_SIZE = 16
 EPOCHS = 6
+BURST = False
 
 LSTM_DIM_SIZE = 32
 NUM_CLASSES = 100
@@ -174,7 +175,7 @@ def build_burst_feature(data_folder):
 
     return np.array(burst_features), np.array(labels), MAX_SEQ_LEN
 
-def run(data_info, burst):
+def run(data_info, burst = False, burst_features = None):
     """Perform a normal run by creating a model, then training it and evaluating the results."""
 
     # Define all parameters used for the current run
@@ -192,20 +193,27 @@ def run(data_info, burst):
 
     # Build the features and the data that we will use. We reshape them by adding a dimension of value 1 to be able to feed them to conv1D.
     features, olabels, max_len = data_info
-    features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
+    if burst:
+        double_features = np.zeros((features.shape[0], max_len, 2))
+        #features = np.reshape(features, [features.shape[0], max_len])
+        double_features[:,:,0] = features
+        double_features[:,:,1] = burst_features
 
-    #labels = convert_labels(olabels)
-    #labels = np.reshape(labels, [labels.shape[0], labels.shape[1], 1])
+        print(double_features.shape)
 
-    X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2) #shuffles the data by default
-    y_train = np.reshape(y_train, [len(y_train), 1])
+        X_train, X_test, y_train, y_test = train_test_split(double_features, olabels, test_size=.2) #shuffles the data by default
+        y_train = np.reshape(y_train, [len(y_train), 1])
+    else:
+        features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
+        X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2) #shuffles the data by default
+        #y_train = np.reshape(y_train, [len(y_train), 1])
 
 
     print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
 
     # Build the model using the params
     if burst:
-        input_shape = (max_len, 1)
+        input_shape = (max_len, 2)
         model = build_model(learn_params, input_shape)
     else:
         input_shape = (max_len, 1)
@@ -268,7 +276,7 @@ def get_dated_file_name(prefix):
     now = datetime.datetime.utcnow()
     return "{0}_d{1}_{2}h_{3}m".format(prefix, now.day, now.hour, now.minute)
 
-result_filename = get_dated_file_name("../results/result_file_CNN"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days")
+result_filename = get_dated_file_name("../results/result_file_CNN"+str(NUM_CLASSES)+"classes_"+str(NUM_DAYS)+"days and burst = " + str(BURST))
 
 def update_result_file(learn_params, acc):
     print("UPDATING RESULT FILE")
@@ -279,13 +287,13 @@ def update_result_file(learn_params, acc):
 if __name__ == '__main__':
     np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
     datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
-    burst = True
-    if burst:
+    burst_features = None
+    if BURST:
         data_info = DataInfo(*build_burst_feature(datadir))
         burst_features, _, _ = data_info
-    else:
-        data_info = DataInfo(*get_data_single(datadir))
-    acc_score_value = run(data_info, burst)
+
+    data_info = DataInfo(*get_data_single(datadir))
+    acc_score_value = run(data_info, burst = BURST, burst_features = burst_features)
 
     # np.random.seed(404) #SEED used in the shuffle of hyperparameters and by keras
     # datadir = "../data_cw"+str(NUM_CLASSES)+"_day0_to_"+str(NUM_DAYS)+"/"
