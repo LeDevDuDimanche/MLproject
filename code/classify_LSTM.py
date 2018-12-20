@@ -1,6 +1,7 @@
 import numpy as np
 import inspect 
 import collections
+from guppy import hpy;
 import datetime
 import os
 import json
@@ -216,6 +217,8 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS):
 			
 		features, olabels, max_len = dataInfo
 		
+		h=hpy()
+		print(h.heap())
 
 		features = np.reshape(features, [features.shape[0], max_len, 1]) #Add a dimension so keras is happy
 		X_train, X_test, y_train, y_test = train_test_split(features, olabels, test_size=.2)#shuffles the data by default
