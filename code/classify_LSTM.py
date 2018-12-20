@@ -91,6 +91,50 @@ def make_single_feature(slist, rlist, olist):
 
 	return alternate_received_and_sent()
 
+	def build_burst_feature(data_folder):
+    """Build a second feature consisting of the packet length sequences split in bursts."""
+    flist = os.listdir(data_folder)
+    features = []
+    burst_features = []
+    labels = []
+    MAX_SEQ_LEN = 0
+    for fname in flist:
+        print(fname)
+        with open(data_folder + fname) as f:
+            data_dict = json.loads(f.read())
+            for k, v in data_dict.items():
+                new_list = make_single_feature(v['sent'], v['received'], v['order'])
+                if len(new_list) > MAX_SEQ_LEN:
+                    MAX_SEQ_LEN = len(new_list)
+                features.append(new_list)
+                labels.append(int(k[:-5]))
+    #features = pad_sequences(features, dtype="float64", maxlen=MAX_SEQ_LEN)
+    #burst_features = get_bursts(features)
+
+    # Transform the feature vector in a vector of bursts
+    #MAX_SEQ_LEN = 0
+    for f in features:
+        new_burst = ngrams_bursts(np.asarray(f))
+        if len(new_burst) > MAX_SEQ_LEN:
+            MAX_SEQ_LEN = len(new_burst)
+        burst_features.append(new_burst)
+
+    # Pad the result to have uniformly shaped inputs
+    burst_features = pad_sequences(burst_features, dtype="float64", maxlen=MAX_SEQ_LEN)
+    
+    # Scale the bursts sequence between -1 and 1
+    # burst_features = np.array(burst_features)
+    # max_burst = np.max(burst_features)
+    # min_burst = np.min(burst_features)
+    # burst_features = np.float64(burst_features)
+    # for b_f in burst_features:
+    #     for elem in b_f:
+    #         elem = elem / max_burst if elem > 0 else elem / min_burst
+
+    print('Features shape: {}\t Bursts shape: {}'.format(np.array(features).shape, np.array(burst_features).shape))
+
+    return np.array(burst_features), np.array(labels), MAX_SEQ_LEN
+
 
 
 def get_data_single(data_folder):
