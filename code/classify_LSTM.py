@@ -309,7 +309,7 @@ def classify_LSTM(NUM_CLASSES, NUM_DAYS, specific_hyperparameter=None):
 		 single_feature(dataInfo, update_result_file, specific_hyperparameter)
 
 if __name__ == '__main__':
-	num_classes = 20
+	num_classes = 100
 	num_days = 10000
 	#you can add a last parameter of type Hyperparameter to classify_LSTM
 	# if you don't want to train the LSTM
@@ -320,7 +320,6 @@ if __name__ == '__main__':
 		RMSprop, 0.0366748726187, 150, 22, 0.323686970012, "tanh", 126) 
 
 	
-
-	hyperparameter50
+ 
 	classify_LSTM(num_classes, num_days)
 
