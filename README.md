@@ -26,6 +26,7 @@ Code for CS433 Project 2
 	-sklearn 0.0
 	-keras 2.2.4
 	-tensorflow 1.12
+	-hyperopt 0.1.1
 
 - Run the create_closed_world script in the /code/ directory. It will create a data directory with the filtered json files. You can modify the number of categories in the closed world as well as the number of days to filter. Default is 20, 10 000 (the whole time period)
 
